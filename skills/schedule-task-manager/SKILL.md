@@ -1,11 +1,13 @@
 ---
 name: schedule-task-manager
+version: 1.0.0
 description: >-
-  Use this skill when the user describes a planning, reminder, schedule, or task-management request in natural language,
-  such as adding a timed task, deleting a scheduled reminder, changing an existing schedule,
-  listing upcoming tasks, or inspecting past runs. The skill should interpret the user's intent,
-  preview the planned action in plain language, ask a concise confirmation question when ambiguous,
-  and then execute the local `ai-sched-cli` commands in this repository.
+  Use this skill when the user wants to create, update, delete, inspect, or run
+  scheduled AI tasks in natural language, configure tag-to-channel routing, or
+  set up long-running scheduler deployment for this repository. The skill should
+  interpret the user's intent, preview the planned action in plain language, ask
+  one concise clarification question when needed, and then execute local
+  `ai-sched-cli` commands from this repository.
 ---
 
 # Schedule Task Manager
