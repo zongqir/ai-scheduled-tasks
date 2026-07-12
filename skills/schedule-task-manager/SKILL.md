@@ -37,12 +37,16 @@ actually needs them.
   Run this script when the user asks whether the scheduler setup is usable, or
   before long-running deployment when you need to verify required dependencies
   such as the configured AI command, `acpx`, `dida365`, or the WeChat bridge.
+  If `raw.githubusercontent.com` is flaky, prefer a temporary Git clone or
+  GitHub archive download over repeated raw-script fetches.
 - `scripts/setup-runtime.sh`
   Run this script when the user wants a compiled binary installed locally, or
   when they want guided dependency setup with install-or-skip choices. The
   script prefers the latest GitHub Release binary and falls back to source
   build when needed, so it can also be used from a standalone GitHub-downloaded
-  copy.
+  copy. When reliability matters more than one-line brevity, prefer cloning or
+  unpacking the GitHub repository and executing the script from that temporary
+  checkout instead of depending on raw-script fetch availability.
 - `references/LONG_RUNNING_REFERENCE.md`
   Use this reference only when the user explicitly asks for long-running setup,
   startup on boot, background service management, or stable deployment.

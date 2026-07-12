@@ -78,6 +78,25 @@ Direct GitHub install:
 bash <(curl -fsSL https://raw.githubusercontent.com/zongqir/ai-scheduled-tasks/main/skills/schedule-task-manager/scripts/setup-runtime.sh) --non-interactive
 ```
 
+More reliable GitHub bootstrap:
+
+```bash
+tmpdir="$(mktemp -d)"
+git clone --depth 1 https://github.com/zongqir/ai-scheduled-tasks.git "$tmpdir/repo"
+"$tmpdir/repo/skills/schedule-task-manager/scripts/setup-runtime.sh" --non-interactive
+"$tmpdir/repo/skills/schedule-task-manager/scripts/check-availability.sh"
+```
+
+Archive-based fallback when `raw.githubusercontent.com` is flaky:
+
+```bash
+tmpdir="$(mktemp -d)"
+curl -fsSL https://github.com/zongqir/ai-scheduled-tasks/archive/refs/heads/main.tar.gz \
+  | tar -xz -C "$tmpdir"
+"$tmpdir/ai-scheduled-tasks-main/skills/schedule-task-manager/scripts/setup-runtime.sh" --non-interactive
+"$tmpdir/ai-scheduled-tasks-main/skills/schedule-task-manager/scripts/check-availability.sh"
+```
+
 Notes:
 
 - Current storage is SQLite via `modernc.org/sqlite`
@@ -85,6 +104,7 @@ Notes:
 - The default AI runtime is `acpx`
 - For Agents and skills, prefer a compiled `ai-sched-cli` binary over `go run`
 - `setup-runtime.sh` prefers the latest GitHub Release binary and falls back to clone+build when no release asset is available
+- `raw.githubusercontent.com` can still time out occasionally; prefer the clone/archive bootstrap above when you want the most reliable GitHub-based setup path
 - Repeating `--channel` / `--channel-ref` builds a channel fan-out list for one task
 - Tasks default to notifying, but `add` / `update` also support `--no-notify` for silent execution
 - Channel selection priority is: explicit `--channel` > matched `tag_routes` > `default_channel`
