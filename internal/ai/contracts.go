@@ -21,6 +21,7 @@ type TaskDraft struct {
 	TimeOfDay    string   `json:"time_of_day,omitempty"`
 	NextRunAt    string   `json:"next_run_at"`
 	CWD          string   `json:"cwd"`
-	Channel      string   `json:"channel"`
+	NotifyPolicy string   `json:"notify_policy,omitempty"`
+	Channel      string   `json:"channel,omitempty"`
 	Tags         []string `json:"tags,omitempty"`
 }

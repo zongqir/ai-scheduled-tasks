@@ -79,6 +79,7 @@ Notes:
 - The default AI runtime is `acpx`
 - For Agents and skills, prefer a compiled `ai-sched-cli` binary over `go run`
 - Repeating `--channel` / `--channel-ref` builds a channel fan-out list for one task
+- Tasks default to notifying, but `add` / `update` also support `--no-notify` for silent execution
 - Channel selection priority is: explicit `--channel` > matched `tag_routes` > `default_channel`
 - `ai-sched-cli tag-route set <tag> ...` is intended to be used by the higher-level scheduling skill
 - `daemon --ensure` is intended to be safe to call after every task create/update from an external skill

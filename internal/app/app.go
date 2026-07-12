@@ -150,6 +150,8 @@ func runAdd(globalConfigPath string, args []string) error {
 	cwdFlag := fs.String("cwd", "", "execution working directory")
 	repeatRule := fs.String("repeat", "", "repeat rule, e.g. daily or weekly|mon")
 	timeOfDay := fs.String("time-of-day", "", "repeat time of day, format HH:MM[:SS]")
+	notify := fs.Bool("notify", false, "explicitly notify when the task runs")
+	noNotify := fs.Bool("no-notify", false, "run the task without sending notifications")
 	var channels multiStringFlag
 	var channelRefs multiStringFlag
 	fs.Var(&channels, "channel", "channel override, repeatable or comma-separated")
@@ -180,14 +182,18 @@ func runAdd(globalConfigPath string, args []string) error {
 		return err
 	}
 
-	taskChannels, err := resolveCreateChannels(cfg, channels.Values(), channelRefs.Values(), tags.Values())
+	notifyPolicy, err := resolveNotifyPolicy(*notify, *noNotify)
+	if err != nil {
+		return err
+	}
+	taskChannels, err := resolveCreateChannels(cfg, channels.Values(), channelRefs.Values(), tags.Values(), notifyPolicy != task.NotifyPolicyOff)
 	if err != nil {
 		return err
 	}
 
 	hasExplicitSchedule := strings.TrimSpace(*at) != "" || strings.TrimSpace(*in) != "" || strings.TrimSpace(*repeatRule) != ""
 	if !hasExplicitSchedule {
-		return runAddWithAI(cfg, repo, coalesceRawInput(rawInput, taskSummary), taskSummary, cwd, taskChannels, tags.Values())
+		return runAddWithAI(cfg, repo, coalesceRawInput(rawInput, taskSummary), taskSummary, cwd, taskChannels, tags.Values(), notifyPolicy)
 	}
 
 	taskAction := task.Action(strings.TrimSpace(*action))
@@ -222,8 +228,9 @@ func runAdd(globalConfigPath string, args []string) error {
 		TimeOfDay:     derivedTimeOfDay,
 		NextRunAt:     nextRunAt,
 		CWD:           cwd,
-		Channel:       taskChannels[0].Channel,
-		ChannelRef:    taskChannels[0].ChannelRef,
+		NotifyPolicy:  notifyPolicy,
+		Channel:       firstChannelName(taskChannels),
+		ChannelRef:    firstChannelRef(taskChannels),
 		Channels:      taskChannels,
 		Tags:          tags.Values(),
 		ConfirmStatus: task.ConfirmNone,
@@ -239,13 +246,14 @@ func runAdd(globalConfigPath string, args []string) error {
 	fmt.Printf("model: %s\n", emptyDash(record.Model))
 	fmt.Printf("instruction: %s\n", emptyDash(record.Instruction))
 	fmt.Printf("next run: %s\n", formatUnix(record.NextRunAt, record.Timezone))
+	fmt.Printf("notify policy: %s\n", record.NotifyPolicy)
 	fmt.Printf("channels: %s\n", formatChannelTargets(record.EffectiveChannels()))
 	fmt.Printf("cwd: %s\n", record.CWD)
 	fmt.Printf("tags: %s\n", formatTags(record.Tags))
 	return nil
 }
 
-func runAddWithAI(cfg config.Config, repo *task.Repository, rawInput, taskSummary, cwd string, taskChannels []task.ChannelTarget, tags []string) error {
+func runAddWithAI(cfg config.Config, repo *task.Repository, rawInput, taskSummary, cwd string, taskChannels []task.ChannelTarget, tags []string, notifyPolicy task.NotifyPolicy) error {
 	client := ai.Client{
 		Command:    cfg.AI.Command,
 		Args:       append([]string(nil), cfg.AI.Args...),
@@ -256,11 +264,12 @@ func runAddWithAI(cfg config.Config, repo *task.Repository, rawInput, taskSummar
 	}
 
 	resp, _, _, err := client.CreateTask(context.Background(), ai.CreateTaskInput{
-		RawInput:       rawInput,
-		Timezone:       cfg.Timezone,
-		CWD:            cwd,
-		DefaultChannel: taskChannels[0].Channel,
-		DefaultAgent:   cfg.AI.Agent,
+		RawInput:            rawInput,
+		Timezone:            cfg.Timezone,
+		CWD:                 cwd,
+		DefaultChannel:      firstChannelName(taskChannels),
+		DefaultNotifyPolicy: string(notifyPolicy),
+		DefaultAgent:        cfg.AI.Agent,
 	})
 	if err != nil {
 		return fmt.Errorf("ai create task: %w", err)
@@ -286,6 +295,7 @@ func runAddWithAI(cfg config.Config, repo *task.Repository, rawInput, taskSummar
 	fmt.Printf("model: %s\n", emptyDash(record.Model))
 	fmt.Printf("instruction: %s\n", emptyDash(record.Instruction))
 	fmt.Printf("next run: %s\n", formatUnix(record.NextRunAt, record.Timezone))
+	fmt.Printf("notify policy: %s\n", record.NotifyPolicy)
 	fmt.Printf("channels: %s\n", formatChannelTargets(record.EffectiveChannels()))
 	fmt.Printf("cwd: %s\n", record.CWD)
 	fmt.Printf("tags: %s\n", formatTags(record.Tags))
@@ -332,14 +342,15 @@ func runList(globalConfigPath string, args []string) error {
 	}
 
 	w := tabwriter.NewWriter(os.Stdout, 2, 2, 2, ' ', 0)
-	fmt.Fprintln(w, "ID\tSTATUS\tNEXT RUN\tCHANNELS\tTAGS\tSUMMARY")
+	fmt.Fprintln(w, "ID\tSTATUS\tNEXT RUN\tNOTIFY\tCHANNELS\tTAGS\tSUMMARY")
 	for _, record := range records {
 		fmt.Fprintf(
 			w,
-			"%s\t%s\t%s\t%s\t%s\t%s\n",
+			"%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
 			record.ID,
 			record.Status,
 			formatUnix(record.NextRunAt, record.Timezone),
+			record.NotifyPolicy,
 			formatChannelTargets(record.EffectiveChannels()),
 			formatTags(record.Tags),
 			record.Summary,
@@ -498,6 +509,7 @@ func runShowTask(globalConfigPath string, args []string) error {
 	fmt.Printf("repeat rule: %s\n", emptyDash(record.RepeatRule))
 	fmt.Printf("time of day: %s\n", emptyDash(record.TimeOfDay))
 	fmt.Printf("timezone: %s\n", record.Timezone)
+	fmt.Printf("notify policy: %s\n", record.NotifyPolicy)
 	fmt.Printf("channels: %s\n", formatChannelTargets(record.EffectiveChannels()))
 	fmt.Printf("tags: %s\n", formatTags(record.Tags))
 	fmt.Printf("tag-route channels: %s\n", formatConfigRouteTargets(cfg.ResolveTagRouteTargets(record.Tags)))
@@ -567,6 +579,8 @@ func runUpdate(globalConfigPath string, args []string) error {
 	cwdFlag := fs.String("cwd", "", "updated cwd")
 	repeatRule := fs.String("repeat", "", "updated repeat rule")
 	timeOfDay := fs.String("time-of-day", "", "updated repeat time of day")
+	notify := fs.Bool("notify", false, "explicitly notify when the task runs")
+	noNotify := fs.Bool("no-notify", false, "run the task without sending notifications")
 	var channels multiStringFlag
 	var channelRefs multiStringFlag
 	fs.Var(&channels, "channel", "updated channel, repeatable or comma-separated")
@@ -625,25 +639,43 @@ func runUpdate(globalConfigPath string, args []string) error {
 			return err
 		}
 	}
-	if *clearChannels {
-		updated.Channels, err = resolveCreateChannels(cfg, nil, nil, updated.Tags)
+	if *notify || *noNotify {
+		updated.NotifyPolicy, err = resolveNotifyPolicy(*notify, *noNotify)
 		if err != nil {
 			return err
 		}
-		updated.Channel = updated.Channels[0].Channel
-		updated.ChannelRef = updated.Channels[0].ChannelRef
+	}
+	if updated.NotifyPolicy == task.NotifyPolicyOff {
+		updated.Channels = nil
+		updated.Channel = ""
+		updated.ChannelRef = ""
+	} else if *clearChannels {
+		updated.Channels, err = resolveCreateChannels(cfg, nil, nil, updated.Tags, true)
+		if err != nil {
+			return err
+		}
+		updated.Channel = firstChannelName(updated.Channels)
+		updated.ChannelRef = firstChannelRef(updated.Channels)
 	} else if len(channels.Values()) > 0 || len(channelRefs.Values()) > 0 {
 		updated.Channels, err = resolveTaskChannels(channels.Values(), channelRefs.Values(), "")
 		if err != nil {
 			return err
 		}
-		updated.Channel = updated.Channels[0].Channel
-		updated.ChannelRef = updated.Channels[0].ChannelRef
+		updated.Channel = firstChannelName(updated.Channels)
+		updated.ChannelRef = firstChannelRef(updated.Channels)
 	}
 	if *clearTags {
 		updated.Tags = nil
 	} else if len(tags.Values()) > 0 {
 		updated.Tags = tags.Values()
+	}
+	if updated.NotifyPolicy != task.NotifyPolicyOff && len(updated.EffectiveChannels()) == 0 {
+		updated.Channels, err = resolveCreateChannels(cfg, nil, nil, updated.Tags, true)
+		if err != nil {
+			return err
+		}
+		updated.Channel = firstChannelName(updated.Channels)
+		updated.ChannelRef = firstChannelRef(updated.Channels)
 	}
 
 	hasScheduleOverride := strings.TrimSpace(*at) != "" || strings.TrimSpace(*in) != "" || strings.TrimSpace(*repeatRule) != "" || strings.TrimSpace(*timeOfDay) != ""
@@ -669,6 +701,7 @@ func runUpdate(globalConfigPath string, args []string) error {
 		TimeOfDay:     updated.TimeOfDay,
 		NextRunAt:     updated.NextRunAt,
 		CWD:           updated.CWD,
+		NotifyPolicy:  updated.NotifyPolicy,
 		Channel:       updated.Channel,
 		ChannelRef:    updated.ChannelRef,
 		Channels:      updated.Channels,
@@ -687,6 +720,7 @@ func runUpdate(globalConfigPath string, args []string) error {
 	fmt.Printf("model: %s\n", emptyDash(record.Model))
 	fmt.Printf("instruction: %s\n", emptyDash(record.Instruction))
 	fmt.Printf("next run: %s\n", formatUnix(record.NextRunAt, record.Timezone))
+	fmt.Printf("notify policy: %s\n", record.NotifyPolicy)
 	fmt.Printf("channels: %s\n", formatChannelTargets(record.EffectiveChannels()))
 	fmt.Printf("cwd: %s\n", record.CWD)
 	fmt.Printf("tags: %s\n", formatTags(record.Tags))
@@ -1131,7 +1165,11 @@ func createTaskFromDraft(cfg config.Config, repo *task.Repository, rawInput stri
 		runAt = nextRunAt.Unix()
 	}
 	resolvedTags := append(append([]string(nil), draft.Tags...), tags...)
-	taskChannels, err := resolveCreateChannels(cfg, singleValueOrNil(strings.TrimSpace(draft.Channel)), nil, resolvedTags)
+	notifyPolicy := task.NotifyPolicy(strings.TrimSpace(draft.NotifyPolicy))
+	if notifyPolicy == "" {
+		notifyPolicy = task.NotifyPolicyDefaultOn
+	}
+	taskChannels, err := resolveCreateChannels(cfg, singleValueOrNil(strings.TrimSpace(draft.Channel)), nil, resolvedTags, notifyPolicy != task.NotifyPolicyOff)
 	if err != nil {
 		return task.Task{}, err
 	}
@@ -1150,8 +1188,9 @@ func createTaskFromDraft(cfg config.Config, repo *task.Repository, rawInput stri
 		TimeOfDay:     strings.TrimSpace(draft.TimeOfDay),
 		NextRunAt:     nextRunAt.Unix(),
 		CWD:           strings.TrimSpace(draft.CWD),
-		Channel:       taskChannels[0].Channel,
-		ChannelRef:    taskChannels[0].ChannelRef,
+		NotifyPolicy:  notifyPolicy,
+		Channel:       firstChannelName(taskChannels),
+		ChannelRef:    firstChannelRef(taskChannels),
 		Channels:      taskChannels,
 		Tags:          resolvedTags,
 		ConfirmStatus: task.ConfirmNone,
@@ -1239,7 +1278,13 @@ func parseStatuses(raw string) ([]task.Status, error) {
 	return out, nil
 }
 
-func resolveCreateChannels(cfg config.Config, explicitChannels, refs, tags []string) ([]task.ChannelTarget, error) {
+func resolveCreateChannels(cfg config.Config, explicitChannels, refs, tags []string, allowNotify bool) ([]task.ChannelTarget, error) {
+	if !allowNotify {
+		if len(explicitChannels) > 0 || len(refs) > 0 {
+			return nil, fmt.Errorf("channels cannot be set when notifications are disabled")
+		}
+		return nil, nil
+	}
 	if len(explicitChannels) > 0 || len(refs) > 0 {
 		return resolveTaskChannels(explicitChannels, refs, cfg.DefaultChannel)
 	}
@@ -1247,6 +1292,33 @@ func resolveCreateChannels(cfg config.Config, explicitChannels, refs, tags []str
 		return configTargetsToTask(routed), nil
 	}
 	return resolveTaskChannels(nil, nil, cfg.DefaultChannel)
+}
+
+func resolveNotifyPolicy(notify, noNotify bool) (task.NotifyPolicy, error) {
+	switch {
+	case notify && noNotify:
+		return "", fmt.Errorf("--notify and --no-notify cannot be used together")
+	case noNotify:
+		return task.NotifyPolicyOff, nil
+	case notify:
+		return task.NotifyPolicyExplicitOn, nil
+	default:
+		return task.NotifyPolicyDefaultOn, nil
+	}
+}
+
+func firstChannelName(targets []task.ChannelTarget) string {
+	if len(targets) == 0 {
+		return ""
+	}
+	return targets[0].Channel
+}
+
+func firstChannelRef(targets []task.ChannelTarget) string {
+	if len(targets) == 0 {
+		return ""
+	}
+	return targets[0].ChannelRef
 }
 
 func resolveTaskChannels(channels, refs []string, defaultChannel string) ([]task.ChannelTarget, error) {

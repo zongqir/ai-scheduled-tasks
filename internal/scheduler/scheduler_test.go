@@ -309,6 +309,72 @@ func TestRunnerRunOnceFansOutNotificationsAcrossChannels(t *testing.T) {
 	}
 }
 
+func TestRunnerRunOnceSkipsOutboxWhenNotificationsDisabled(t *testing.T) {
+	repo := newTestRepository(t)
+	_, err := repo.Create(context.Background(), task.CreateInput{
+		Summary:      "silent run",
+		Action:       task.ActionRunAgent,
+		Agent:        "codex",
+		Instruction:  "Reply with done.",
+		ScheduleType: task.ScheduleOnce,
+		Timezone:     "Asia/Shanghai",
+		RunAt:        1,
+		NextRunAt:    1,
+		CWD:          "/tmp/project",
+		NotifyPolicy: task.NotifyPolicyOff,
+	})
+	if err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+
+	sender := &fakeSender{}
+	execRunner := &fakeExecutor{
+		result: executor.Result{
+			Command:  []string{"acpx", "codex", "exec", "Reply with done."},
+			Stdout:   "done",
+			ExitCode: 0,
+		},
+	}
+	runner := Runner{
+		Repo:                repo,
+		Factory:             fakeFactory{sender: sender},
+		Executor:            execRunner,
+		PollInterval:        time.Second,
+		NotificationPoll:    10 * time.Second,
+		StuckRunningTimeout: 5 * time.Minute,
+		NotificationRetries: 3,
+		Now: func() time.Time {
+			return time.Unix(2, 0)
+		},
+	}
+
+	if err := runner.RunOnce(context.Background()); err != nil {
+		t.Fatalf("run once: %v", err)
+	}
+	if err := runner.ProcessNotificationsOnce(context.Background()); err != nil {
+		t.Fatalf("process notifications once: %v", err)
+	}
+	if len(sender.messages) != 0 {
+		t.Fatalf("expected no delivered notifications, got %d", len(sender.messages))
+	}
+
+	notifications, err := repo.ListNotifications(context.Background(), 10)
+	if err != nil {
+		t.Fatalf("list notifications: %v", err)
+	}
+	if len(notifications) != 0 {
+		t.Fatalf("expected no notification rows, got %#v", notifications)
+	}
+
+	runs, err := repo.ListRuns(context.Background(), task.RunListFilter{Limit: 10})
+	if err != nil {
+		t.Fatalf("list runs: %v", err)
+	}
+	if len(runs) != 1 || runs[0].NotifyOutput != "notifications disabled" {
+		t.Fatalf("unexpected run notify output: %#v", runs)
+	}
+}
+
 func TestResultNotificationBodyUsesReadableTemplate(t *testing.T) {
 	body := resultNotificationBody(task.Task{
 		Summary:     "检查 CI",

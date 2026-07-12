@@ -203,7 +203,7 @@ func (r Runner) executeTask(ctx context.Context, record task.Task, runID string,
 		})
 		execOutput := summarizeExecution(record, result)
 		notifications := buildResultNotifications(record, result, err)
-		notifyOutput := queuedNotificationDetail(len(notifications))
+		notifyOutput := notificationRunDetail(record, len(notifications))
 		if err != nil {
 			finishInput.RunStatus = task.RunStatusFailed
 			finishInput.TaskStatus = task.StatusFailed
@@ -214,7 +214,7 @@ func (r Runner) executeTask(ctx context.Context, record task.Task, runID string,
 		return execOutput, notifyOutput, notifications, finishInput, nil
 	case task.ActionNotify:
 		notifications := buildChannelNotifications(record, reminderNotificationBody(record))
-		return "action=notify", queuedNotificationDetail(len(notifications)), notifications, finishInput, nil
+		return "action=notify", notificationRunDetail(record, len(notifications)), notifications, finishInput, nil
 	default:
 		finishInput.RunStatus = task.RunStatusFailed
 		finishInput.TaskStatus = task.StatusFailed
@@ -412,6 +412,9 @@ func buildResultNotifications(record task.Task, result executor.Result, execErr 
 }
 
 func buildChannelNotifications(record task.Task, body string) []task.CreateNotificationInput {
+	if !record.ShouldNotify() {
+		return nil
+	}
 	targets := record.EffectiveChannels()
 	notifications := make([]task.CreateNotificationInput, 0, len(targets))
 	for _, target := range targets {
@@ -501,6 +504,13 @@ func queuedNotificationDetail(count int) string {
 		return "no notification queued"
 	}
 	return fmt.Sprintf("queued %d notification(s)", count)
+}
+
+func notificationRunDetail(record task.Task, count int) string {
+	if !record.ShouldNotify() {
+		return "notifications disabled"
+	}
+	return queuedNotificationDetail(count)
 }
 
 func truncate(raw string, limit int) string {

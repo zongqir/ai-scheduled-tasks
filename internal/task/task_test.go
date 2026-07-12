@@ -34,8 +34,35 @@ func TestRepositoryCreateDefaultsScheduleType(t *testing.T) {
 	if record.ConfirmStatus != ConfirmNone {
 		t.Fatalf("expected confirm status %q, got %q", ConfirmNone, record.ConfirmStatus)
 	}
+	if record.NotifyPolicy != NotifyPolicyDefaultOn {
+		t.Fatalf("expected notify policy %q, got %q", NotifyPolicyDefaultOn, record.NotifyPolicy)
+	}
 	if len(record.Tags) != 2 || record.Tags[0] != "work" || record.Tags[1] != "ci" {
 		t.Fatalf("unexpected tags: %#v", record.Tags)
+	}
+}
+
+func TestRepositoryCreateAllowsSilentTaskWithoutChannels(t *testing.T) {
+	repo := newTestRepository(t)
+
+	record, err := repo.Create(context.Background(), CreateInput{
+		Summary:      "silent check",
+		NotifyPolicy: NotifyPolicyOff,
+		ScheduleType: ScheduleOnce,
+		Timezone:     "Asia/Shanghai",
+		RunAt:        1,
+		NextRunAt:    1,
+		CWD:          "/tmp/project",
+	})
+	if err != nil {
+		t.Fatalf("create silent task: %v", err)
+	}
+
+	if record.NotifyPolicy != NotifyPolicyOff {
+		t.Fatalf("expected notify policy off, got %q", record.NotifyPolicy)
+	}
+	if len(record.EffectiveChannels()) != 0 {
+		t.Fatalf("expected no channels, got %#v", record.EffectiveChannels())
 	}
 }
 

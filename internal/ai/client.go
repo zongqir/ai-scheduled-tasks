@@ -21,12 +21,13 @@ type Client struct {
 }
 
 type CreateTaskInput struct {
-	RawInput       string
-	Timezone       string
-	CWD            string
-	DefaultChannel string
-	DefaultAgent   string
-	Now            time.Time
+	RawInput            string
+	Timezone            string
+	CWD                 string
+	DefaultChannel      string
+	DefaultNotifyPolicy string
+	DefaultAgent        string
+	Now                 time.Time
 }
 
 type Health struct {
@@ -101,12 +102,13 @@ func buildCreateTaskPrompt(input CreateTaskInput) (string, error) {
 	}
 
 	payload, err := json.MarshalIndent(map[string]string{
-		"raw_input":       strings.TrimSpace(input.RawInput),
-		"timezone":        strings.TrimSpace(input.Timezone),
-		"cwd":             strings.TrimSpace(input.CWD),
-		"default_channel": strings.TrimSpace(input.DefaultChannel),
-		"default_agent":   strings.TrimSpace(input.DefaultAgent),
-		"now":             now.In(loc).Format(time.RFC3339),
+		"raw_input":             strings.TrimSpace(input.RawInput),
+		"timezone":              strings.TrimSpace(input.Timezone),
+		"cwd":                   strings.TrimSpace(input.CWD),
+		"default_channel":       strings.TrimSpace(input.DefaultChannel),
+		"default_notify_policy": strings.TrimSpace(input.DefaultNotifyPolicy),
+		"default_agent":         strings.TrimSpace(input.DefaultAgent),
+		"now":                   now.In(loc).Format(time.RFC3339),
 	}, "", "  ")
 	if err != nil {
 		return "", fmt.Errorf("marshal create task input: %w", err)
@@ -145,10 +147,17 @@ Rules:
 - For recurring tasks, include repeat_rule and time_of_day
 - For once tasks, next_run_at must be the execution time
 - Default action to "run_agent" unless the user explicitly wants only a notification
+- Valid notify_policy values:
+  - "default_on"
+  - "explicit_on"
+  - "off"
+- If the user explicitly wants no notification, set notify_policy to "off" and omit channel
+- If the user explicitly asks to be notified, set notify_policy to "explicit_on"
+- Otherwise set notify_policy to the provided default_notify_policy, or "default_on" when absent
 - For "run_agent", set "agent" to the configured default agent unless the user clearly specifies another one
 - For "run_agent", include a concrete one-shot "instruction" that will be passed directly to acpx for execution at runtime
 - Use the provided cwd unless the user explicitly asks for a different directory
-- Use the provided default_channel unless the user clearly requests another channel
+- When notify_policy is not "off", use the provided default_channel unless the user clearly requests another channel
 - Include "tags" when the user explicitly asks for labels/tags or category metadata
 - summary should be short and concrete
 
@@ -184,6 +193,15 @@ func validateTaskDraft(draft TaskDraft) error {
 	if action == "" {
 		action = "run_agent"
 	}
+	notifyPolicy := strings.TrimSpace(draft.NotifyPolicy)
+	if notifyPolicy == "" {
+		notifyPolicy = "default_on"
+	}
+	switch notifyPolicy {
+	case "default_on", "explicit_on", "off":
+	default:
+		return fmt.Errorf("unsupported notify_policy: %s", draft.NotifyPolicy)
+	}
 	switch action {
 	case "run_agent":
 		if strings.TrimSpace(draft.Agent) == "" {
@@ -211,8 +229,11 @@ func validateTaskDraft(draft TaskDraft) error {
 	if strings.TrimSpace(draft.CWD) == "" {
 		return fmt.Errorf("task cwd is required")
 	}
-	if strings.TrimSpace(draft.Channel) == "" {
+	if notifyPolicy != "off" && strings.TrimSpace(draft.Channel) == "" {
 		return fmt.Errorf("task channel is required")
+	}
+	if notifyPolicy == "off" && strings.TrimSpace(draft.Channel) != "" {
+		return fmt.Errorf("task channel must be empty when notify_policy is off")
 	}
 	switch strings.TrimSpace(draft.ScheduleType) {
 	case "once":

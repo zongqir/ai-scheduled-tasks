@@ -82,6 +82,7 @@ func (d *DB) Migrate(ctx context.Context) error {
 			time_of_day TEXT,
 			next_run_at INTEGER NOT NULL,
 			cwd TEXT NOT NULL,
+			notify_policy TEXT NOT NULL DEFAULT 'default_on',
 			channel TEXT NOT NULL,
 			channel_ref TEXT,
 			tags TEXT,
@@ -156,6 +157,9 @@ func (d *DB) Migrate(ctx context.Context) error {
 		return err
 	}
 	if err := d.ensureColumn(ctx, "tasks", "model", "TEXT"); err != nil {
+		return err
+	}
+	if err := d.ensureColumn(ctx, "tasks", "notify_policy", "TEXT NOT NULL DEFAULT 'default_on'"); err != nil {
 		return err
 	}
 	if err := d.ensureColumn(ctx, "outbox_notifications", "delivery_detail", "TEXT"); err != nil {

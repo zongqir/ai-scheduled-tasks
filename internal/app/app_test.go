@@ -37,7 +37,7 @@ func TestResolveCreateChannelsUsesTagRoutesBeforeDefault(t *testing.T) {
 		},
 	}
 
-	targets, err := resolveCreateChannels(cfg, nil, nil, []string{"urgent"})
+	targets, err := resolveCreateChannels(cfg, nil, nil, []string{"urgent"}, true)
 	if err != nil {
 		t.Fatalf("resolve create channels: %v", err)
 	}
@@ -58,11 +58,23 @@ func TestResolveCreateChannelsExplicitWinsOverTagRoutes(t *testing.T) {
 		},
 	}
 
-	targets, err := resolveCreateChannels(cfg, []string{"webhook"}, nil, []string{"work"})
+	targets, err := resolveCreateChannels(cfg, []string{"webhook"}, nil, []string{"work"}, true)
 	if err != nil {
 		t.Fatalf("resolve create channels: %v", err)
 	}
 	if len(targets) != 1 || targets[0].Channel != "webhook" {
 		t.Fatalf("unexpected explicit targets: %#v", targets)
+	}
+}
+
+func TestResolveCreateChannelsAllowsSilentTasks(t *testing.T) {
+	cfg := config.Default()
+
+	targets, err := resolveCreateChannels(cfg, nil, nil, []string{"work"}, false)
+	if err != nil {
+		t.Fatalf("resolve silent channels: %v", err)
+	}
+	if len(targets) != 0 {
+		t.Fatalf("expected no channels, got %#v", targets)
 	}
 }

@@ -43,6 +43,14 @@ const (
 	ActionNotify   Action = "notify"
 )
 
+type NotifyPolicy string
+
+const (
+	NotifyPolicyDefaultOn  NotifyPolicy = "default_on"
+	NotifyPolicyExplicitOn NotifyPolicy = "explicit_on"
+	NotifyPolicyOff        NotifyPolicy = "off"
+)
+
 type Task struct {
 	ID            string
 	RawInput      string
@@ -58,6 +66,7 @@ type Task struct {
 	TimeOfDay     string
 	NextRunAt     int64
 	CWD           string
+	NotifyPolicy  NotifyPolicy
 	Channel       string
 	ChannelRef    string
 	Channels      []ChannelTarget
@@ -104,6 +113,7 @@ type CreateInput struct {
 	TimeOfDay     string
 	NextRunAt     int64
 	CWD           string
+	NotifyPolicy  NotifyPolicy
 	Channel       string
 	ChannelRef    string
 	Channels      []ChannelTarget
@@ -149,6 +159,7 @@ type UpdateInput struct {
 	TimeOfDay     string
 	NextRunAt     int64
 	CWD           string
+	NotifyPolicy  NotifyPolicy
 	Channel       string
 	ChannelRef    string
 	Channels      []ChannelTarget
@@ -197,6 +208,7 @@ func (r *Repository) Create(ctx context.Context, input CreateInput) (Task, error
 		TimeOfDay:     strings.TrimSpace(input.TimeOfDay),
 		NextRunAt:     input.NextRunAt,
 		CWD:           strings.TrimSpace(input.CWD),
+		NotifyPolicy:  input.NotifyPolicy,
 		Channel:       strings.TrimSpace(input.Channel),
 		ChannelRef:    strings.TrimSpace(input.ChannelRef),
 		Channels:      normalizeChannelTargets(input.Channels),
@@ -218,9 +230,9 @@ func (r *Repository) Create(ctx context.Context, input CreateInput) (Task, error
 	const query = `
 		INSERT INTO tasks (
 			id, raw_input, summary, action, agent, instruction, model, schedule_type, timezone, run_at, repeat_rule,
-			time_of_day, next_run_at, cwd, channel, channel_ref, tags, status,
+			time_of_day, next_run_at, cwd, notify_policy, channel, channel_ref, tags, status,
 			confirm_status, created_at, updated_at, last_error
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	tx, err := r.db.BeginTx(ctx, nil)
@@ -246,6 +258,7 @@ func (r *Repository) Create(ctx context.Context, input CreateInput) (Task, error
 		nullIfEmpty(record.TimeOfDay),
 		record.NextRunAt,
 		record.CWD,
+		record.NotifyPolicy,
 		record.Channel,
 		nullIfEmpty(record.ChannelRef),
 		nullIfEmpty(joinTags(record.Tags)),
@@ -286,6 +299,7 @@ func (r *Repository) Update(ctx context.Context, input UpdateInput) (Task, error
 		TimeOfDay:     input.TimeOfDay,
 		NextRunAt:     input.NextRunAt,
 		CWD:           input.CWD,
+		NotifyPolicy:  input.NotifyPolicy,
 		Channel:       input.Channel,
 		ChannelRef:    input.ChannelRef,
 		Channels:      input.Channels,
@@ -312,6 +326,7 @@ func (r *Repository) Update(ctx context.Context, input UpdateInput) (Task, error
 		TimeOfDay:     createInput.TimeOfDay,
 		NextRunAt:     createInput.NextRunAt,
 		CWD:           createInput.CWD,
+		NotifyPolicy:  createInput.NotifyPolicy,
 		Channel:       createInput.Channel,
 		ChannelRef:    createInput.ChannelRef,
 		Channels:      normalizeChannelTargets(createInput.Channels),
@@ -337,7 +352,7 @@ func (r *Repository) Update(ctx context.Context, input UpdateInput) (Task, error
 	result, err := tx.ExecContext(ctx, `
 		UPDATE tasks
 		SET raw_input = ?, summary = ?, action = ?, agent = ?, instruction = ?, model = ?, schedule_type = ?, timezone = ?, run_at = ?,
-			repeat_rule = ?, time_of_day = ?, next_run_at = ?, cwd = ?, channel = ?,
+			repeat_rule = ?, time_of_day = ?, next_run_at = ?, cwd = ?, notify_policy = ?, channel = ?,
 			channel_ref = ?, tags = ?, status = ?, confirm_status = ?, updated_at = ?, last_error = NULL
 		WHERE id = ?
 	`,
@@ -354,6 +369,7 @@ func (r *Repository) Update(ctx context.Context, input UpdateInput) (Task, error
 		nullIfEmpty(record.TimeOfDay),
 		record.NextRunAt,
 		record.CWD,
+		record.NotifyPolicy,
 		record.Channel,
 		nullIfEmpty(record.ChannelRef),
 		nullIfEmpty(joinTags(record.Tags)),
@@ -396,7 +412,7 @@ func (r *Repository) List(ctx context.Context, filter ListFilter) ([]Task, error
 	query := `
 		SELECT
 			id, raw_input, summary, action, agent, instruction, model, schedule_type, timezone, run_at, repeat_rule,
-			time_of_day, next_run_at, cwd, channel, channel_ref, tags, status,
+			time_of_day, next_run_at, cwd, notify_policy, channel, channel_ref, tags, status,
 			confirm_status, created_at, updated_at, last_error
 		FROM tasks
 	`
@@ -547,7 +563,15 @@ func (in CreateInput) Validate() error {
 	if strings.TrimSpace(in.CWD) == "" {
 		return fmt.Errorf("cwd is required")
 	}
-	if len(in.EffectiveChannels()) == 0 {
+	if in.NotifyPolicy == "" {
+		in.NotifyPolicy = NotifyPolicyDefaultOn
+	}
+	switch in.NotifyPolicy {
+	case NotifyPolicyDefaultOn, NotifyPolicyExplicitOn, NotifyPolicyOff:
+	default:
+		return fmt.Errorf("unsupported notify_policy: %s", in.NotifyPolicy)
+	}
+	if in.NotifyPolicy != NotifyPolicyOff && len(in.EffectiveChannels()) == 0 {
 		return fmt.Errorf("at least one channel is required")
 	}
 	if in.NextRunAt <= 0 {
@@ -582,6 +606,7 @@ func (in CreateInput) normalized() CreateInput {
 	in.RepeatRule = strings.TrimSpace(in.RepeatRule)
 	in.TimeOfDay = strings.TrimSpace(in.TimeOfDay)
 	in.CWD = strings.TrimSpace(in.CWD)
+	in.NotifyPolicy = NotifyPolicy(strings.TrimSpace(string(in.NotifyPolicy)))
 	in.Channel = strings.TrimSpace(in.Channel)
 	in.ChannelRef = strings.TrimSpace(in.ChannelRef)
 	in.Channels = normalizeChannelTargets(in.Channels)
@@ -604,8 +629,16 @@ func (in CreateInput) normalized() CreateInput {
 	if in.ConfirmStatus == "" {
 		in.ConfirmStatus = ConfirmNone
 	}
+	if in.NotifyPolicy == "" {
+		in.NotifyPolicy = NotifyPolicyDefaultOn
+	}
 	if in.RawInput == "" {
 		in.RawInput = in.Summary
+	}
+	if in.NotifyPolicy == NotifyPolicyOff {
+		in.Channel = ""
+		in.ChannelRef = ""
+		in.Channels = nil
 	}
 	if len(in.Channels) == 0 && in.Channel != "" {
 		in.Channels = []ChannelTarget{{
@@ -630,7 +663,7 @@ func (r *Repository) ClaimDue(ctx context.Context, now int64) (Task, bool, error
 	row := tx.QueryRowContext(ctx, `
 		SELECT
 			id, raw_input, summary, action, agent, instruction, model, schedule_type, timezone, run_at, repeat_rule,
-			time_of_day, next_run_at, cwd, channel, channel_ref, tags, status,
+			time_of_day, next_run_at, cwd, notify_policy, channel, channel_ref, tags, status,
 			confirm_status, created_at, updated_at, last_error
 		FROM tasks
 		WHERE status = ? AND next_run_at <= ?
@@ -688,7 +721,7 @@ func (r *Repository) ClaimByID(ctx context.Context, id string) (Task, error) {
 	row := tx.QueryRowContext(ctx, `
 		SELECT
 			id, raw_input, summary, action, agent, instruction, model, schedule_type, timezone, run_at, repeat_rule,
-			time_of_day, next_run_at, cwd, channel, channel_ref, tags, status,
+			time_of_day, next_run_at, cwd, notify_policy, channel, channel_ref, tags, status,
 			confirm_status, created_at, updated_at, last_error
 		FROM tasks
 		WHERE id = ?
@@ -733,7 +766,7 @@ func (r *Repository) GetByID(ctx context.Context, id string) (Task, error) {
 	row := r.db.QueryRowContext(ctx, `
 		SELECT
 			id, raw_input, summary, action, agent, instruction, model, schedule_type, timezone, run_at, repeat_rule,
-			time_of_day, next_run_at, cwd, channel, channel_ref, tags, status,
+			time_of_day, next_run_at, cwd, notify_policy, channel, channel_ref, tags, status,
 			confirm_status, created_at, updated_at, last_error
 		FROM tasks
 		WHERE id = ?
@@ -998,17 +1031,18 @@ func NextRecurringRun(record Task, after time.Time) (int64, error) {
 
 func scanTask(scanner interface{ Scan(dest ...any) error }) (Task, error) {
 	var (
-		record      Task
-		action      sql.NullString
-		agent       sql.NullString
-		instruction sql.NullString
-		model       sql.NullString
-		runAt       sql.NullInt64
-		repeatRule  sql.NullString
-		timeOfDay   sql.NullString
-		channelRef  sql.NullString
-		tags        sql.NullString
-		lastError   sql.NullString
+		record       Task
+		action       sql.NullString
+		agent        sql.NullString
+		instruction  sql.NullString
+		model        sql.NullString
+		runAt        sql.NullInt64
+		repeatRule   sql.NullString
+		timeOfDay    sql.NullString
+		notifyPolicy sql.NullString
+		channelRef   sql.NullString
+		tags         sql.NullString
+		lastError    sql.NullString
 	)
 
 	if err := scanner.Scan(
@@ -1026,6 +1060,7 @@ func scanTask(scanner interface{ Scan(dest ...any) error }) (Task, error) {
 		&timeOfDay,
 		&record.NextRunAt,
 		&record.CWD,
+		&notifyPolicy,
 		&record.Channel,
 		&channelRef,
 		&tags,
@@ -1062,6 +1097,9 @@ func scanTask(scanner interface{ Scan(dest ...any) error }) (Task, error) {
 	if timeOfDay.Valid {
 		record.TimeOfDay = timeOfDay.String
 	}
+	if notifyPolicy.Valid {
+		record.NotifyPolicy = NotifyPolicy(notifyPolicy.String)
+	}
 	if channelRef.Valid {
 		record.ChannelRef = channelRef.String
 	}
@@ -1073,6 +1111,9 @@ func scanTask(scanner interface{ Scan(dest ...any) error }) (Task, error) {
 	}
 	if record.Action == "" {
 		record.Action = ActionRunAgent
+	}
+	if record.NotifyPolicy == "" {
+		record.NotifyPolicy = NotifyPolicyDefaultOn
 	}
 	if record.Action == ActionRunAgent && record.Agent == "" {
 		record.Agent = "codex"
@@ -1136,6 +1177,10 @@ func scanRun(scanner interface{ Scan(dest ...any) error }) (Run, error) {
 	}
 
 	return record, nil
+}
+
+func (t Task) ShouldNotify() bool {
+	return t.NotifyPolicy != NotifyPolicyOff
 }
 
 func newID() string {
