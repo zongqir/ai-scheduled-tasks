@@ -15,6 +15,7 @@ The current runtime model is:
 Current status:
 
 - Local CLI foundation is implemented
+- GitHub Actions builds Linux binaries for release-style use
 - Config and SQLite bootstrap are working
 - Task CRUD commands are available
 - `daemon --ensure` provides idempotent background startup
@@ -54,13 +55,21 @@ Planned layers:
 Quick start:
 
 ```bash
-ai-sched-cli init
-ai-sched-cli tag-route set urgent --channel dida --channel wechat
-ai-sched-cli tag-route set work --channel webhook
-ai-sched-cli add --summary "check CI" --in 30m --channel wecom_robot --channel wechat
-ai-sched-cli list
-ai-sched-cli daemon --ensure
-ai-sched-cli status
+go build -o ./bin/ai-sched-cli ./cmd/ai-sched-cli
+./bin/ai-sched-cli init
+./bin/ai-sched-cli tag-route set urgent --channel dida --channel wechat
+./bin/ai-sched-cli tag-route set work --channel webhook
+./bin/ai-sched-cli add --summary "check CI" --in 30m --channel wecom_robot --channel wechat
+./bin/ai-sched-cli list
+./bin/ai-sched-cli daemon --ensure
+./bin/ai-sched-cli status
+```
+
+Skill-oriented runtime setup:
+
+```bash
+skills/schedule-task-manager/scripts/setup-runtime.sh
+skills/schedule-task-manager/scripts/check-availability.sh
 ```
 
 Notes:
@@ -68,6 +77,7 @@ Notes:
 - Current storage is SQLite via `modernc.org/sqlite`
 - The module now targets Go `1.25`
 - The default AI runtime is `acpx`
+- For Agents and skills, prefer a compiled `ai-sched-cli` binary over `go run`
 - Repeating `--channel` / `--channel-ref` builds a channel fan-out list for one task
 - Channel selection priority is: explicit `--channel` > matched `tag_routes` > `default_channel`
 - `ai-sched-cli tag-route set <tag> ...` is intended to be used by the higher-level scheduling skill

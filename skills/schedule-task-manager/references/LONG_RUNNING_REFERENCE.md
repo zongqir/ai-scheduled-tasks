@@ -17,7 +17,8 @@ Repository assumptions:
 
 - repo root: `/home/admin/code/tool/ai-sched-cli`
 - config path: `~/.config/ai-sched-cli/config.json`
-- command: `go run ./cmd/ai-sched-cli --config ~/.config/ai-sched-cli/config.json daemon`
+- binary path example: `~/.local/bin/ai-sched-cli`
+- command: `ai-sched-cli --config ~/.config/ai-sched-cli/config.json daemon`
 
 ## Minimal Persistent Start
 
@@ -25,8 +26,9 @@ Use this only when the user wants a quick background start, not formal boot inte
 
 ```bash
 cd /home/admin/code/tool/ai-sched-cli
-go run ./cmd/ai-sched-cli daemon --ensure
-go run ./cmd/ai-sched-cli daemon --status
+./skills/schedule-task-manager/scripts/setup-runtime.sh
+ai-sched-cli daemon --ensure
+ai-sched-cli daemon --status
 ```
 
 ## Recommended systemd Unit
@@ -40,7 +42,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 WorkingDirectory=/home/admin/code/tool/ai-sched-cli
-ExecStart=/usr/bin/env bash -lc 'go run ./cmd/ai-sched-cli --config ~/.config/ai-sched-cli/config.json daemon'
+ExecStart=/usr/bin/env bash -lc 'ai-sched-cli --config ~/.config/ai-sched-cli/config.json daemon'
 Restart=always
 RestartSec=3
 
@@ -61,7 +63,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 WorkingDirectory=/home/admin/code/tool/ai-sched-cli
-ExecStart=/usr/bin/env bash -lc 'go run ./cmd/ai-sched-cli --config ~/.config/ai-sched-cli/config.json daemon'
+ExecStart=/usr/bin/env bash -lc 'ai-sched-cli --config ~/.config/ai-sched-cli/config.json daemon'
 Restart=always
 RestartSec=3
 
@@ -80,8 +82,8 @@ After setup, verify both the service and the scheduler itself:
 
 ```bash
 cd /home/admin/code/tool/ai-sched-cli
-go run ./cmd/ai-sched-cli status
-go run ./cmd/ai-sched-cli daemon --status
+ai-sched-cli status
+ai-sched-cli daemon --status
 ```
 
 If the user asks for channel-specific validation, also verify:

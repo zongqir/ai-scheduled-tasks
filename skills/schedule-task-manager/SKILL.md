@@ -4,10 +4,11 @@ version: 1.0.0
 description: >-
   Use this skill when the user wants to create, update, delete, inspect, or run
   scheduled AI tasks in natural language, configure tag-to-channel routing, or
-  set up long-running scheduler deployment for this repository. The skill should
-  interpret the user's intent, preview the planned action in plain language, ask
-  one concise clarification question when needed, and then execute local
-  `ai-sched-cli` commands from this repository.
+  set up long-running scheduler deployment for this repository. Prefer the
+  compiled `ai-sched-cli` binary over `go run`, use setup references when the
+  runtime may be missing dependencies, preview the planned action in plain
+  language, ask one concise clarification question when needed, and then
+  execute the local scheduler commands.
 ---
 
 # Schedule Task Manager
@@ -19,15 +20,29 @@ Use this skill when the user speaks in natural language about:
 - changing the time, summary, channel, or cwd of a task
 - adding or changing task tags
 - configuring tag-to-channel routing rules
+- checking scheduler/runtime availability
+- setting up the compiled scheduler runtime and dependencies
 - configuring long-running deployment or startup behavior
 - listing tasks
 - inspecting runs or task details
 
 This skill is the natural-language front end. The Go CLI in this repository is the execution back end.
 
-Companion references in this skill folder:
+## Reference Files
 
-- `LONG_RUNNING_REFERENCE.md`: use only when the user explicitly asks for long-running setup, startup on boot, or service deployment
+Read additional files in this skill directory only when the current user request
+actually needs them.
+
+- `scripts/check-availability.sh`
+  Run this script when the user asks whether the scheduler setup is usable, or
+  before long-running deployment when you need to verify required dependencies
+  such as the configured AI command, `acpx`, `dida365`, or the WeChat bridge.
+- `scripts/setup-runtime.sh`
+  Run this script when the user wants a compiled binary installed locally, or
+  when they want guided dependency setup with install-or-skip choices.
+- `references/LONG_RUNNING_REFERENCE.md`
+  Use this reference only when the user explicitly asks for long-running setup,
+  startup on boot, background service management, or stable deployment.
 
 ## Core Rule
 
@@ -45,34 +60,37 @@ Instead:
 
 Run commands from the repository root.
 
+Assume the compiled binary name is `ai-sched-cli`. If the binary is missing,
+first use `setup-runtime.sh` instead of defaulting to `go run`.
+
 - Create task:
-  - `go run ./cmd/ai-sched-cli add "<natural language>"`
+  - `ai-sched-cli add "<natural language>"`
   - or use explicit flags when the schedule is already resolved
   - tags: `--tag work --tag ci`
   - channels: repeat `--channel`, optional aligned `--channel-ref`
-  - after a successful create, always run `go run ./cmd/ai-sched-cli daemon --ensure`
+  - after a successful create, always run `ai-sched-cli daemon --ensure`
 - List tasks:
-  - `go run ./cmd/ai-sched-cli list`
-  - `go run ./cmd/ai-sched-cli list --all`
+  - `ai-sched-cli list`
+  - `ai-sched-cli list --all`
 - Show one task:
-  - `go run ./cmd/ai-sched-cli show <task-id>`
+  - `ai-sched-cli show <task-id>`
 - Manage tag routes:
-  - `go run ./cmd/ai-sched-cli tag-route list`
-  - `go run ./cmd/ai-sched-cli tag-route set <tag> --channel <name> [--channel-ref <ref>]`
-  - `go run ./cmd/ai-sched-cli tag-route remove <tag>`
+  - `ai-sched-cli tag-route list`
+  - `ai-sched-cli tag-route set <tag> --channel <name> [--channel-ref <ref>]`
+  - `ai-sched-cli tag-route remove <tag>`
 - Update one task:
-  - `go run ./cmd/ai-sched-cli update <task-id> [flags]`
+  - `ai-sched-cli update <task-id> [flags]`
   - tags: `--tag work --tag ci` or `--clear-tags`
   - channels: repeat `--channel`, optional aligned `--channel-ref`, or `--clear-channels`
-  - after a successful update, always run `go run ./cmd/ai-sched-cli daemon --ensure`
+  - after a successful update, always run `ai-sched-cli daemon --ensure`
 - Delete one task:
-  - `go run ./cmd/ai-sched-cli remove <task-id>`
+  - `ai-sched-cli remove <task-id>`
 - Manually run one task:
-  - `go run ./cmd/ai-sched-cli run <task-id>`
+  - `ai-sched-cli run <task-id>`
 - Show run history:
-  - `go run ./cmd/ai-sched-cli runs [task-id]`
+  - `ai-sched-cli runs [task-id]`
 - Show run details:
-  - `go run ./cmd/ai-sched-cli run-show <run-id>`
+  - `ai-sched-cli run-show <run-id>`
 
 ## Intent Mapping
 
@@ -86,6 +104,8 @@ Map user requests into one of these operations:
 - `run`
 - `inspect-runs`
 - `configure-tag-route`
+- `check-availability`
+- `setup-runtime`
 - `configure-long-running`
 
 Examples:
@@ -95,6 +115,8 @@ Examples:
 - "把每天六点那个改成七点" -> `update`
 - "给这个任务打上 work 和 ci 标签" -> `update`
 - "把紧急标签路由到滴答和微信" -> `configure-tag-route`
+- "看看现在这套能不能跑" -> `check-availability`
+- "先帮我把这个装好，缺什么你自己处理，不能装的就先跳过" -> `setup-runtime`
 - "帮我把这个常驻跑起来" -> `configure-long-running`
 - "看看接下来有哪些任务" -> `list`
 - "看看这个任务上次跑了什么" -> `inspect-runs`
@@ -184,12 +206,12 @@ Examples:
 
 For `create`:
 
-- If the user gave natural language only, prefer `go run ./cmd/ai-sched-cli add "<request>"`
+- If the user gave natural language only, prefer `ai-sched-cli add "<request>"`
 - Let the CLI's AI create-task path resolve the schedule
 - If directory or tags are already confidently resolved, prefer explicit flags such as `--cwd` and `--tag`
 - If the user names one or more delivery channels, pass them with repeated `--channel` flags
 - If the user only expresses semantic intent like "工作" or "紧急", prefer tags and let the CLI resolve channels from configured tag routes
-- After task creation succeeds, always call `go run ./cmd/ai-sched-cli daemon --ensure`
+- After task creation succeeds, always call `ai-sched-cli daemon --ensure`
 
 For `configure-tag-route`:
 
@@ -198,10 +220,26 @@ For `configure-tag-route`:
 - Use repeated `--channel` flags for fan-out routes
 - Preview the final mapping before changing it
 
+For `check-availability`:
+
+- Run `scripts/check-availability.sh` from this skill directory
+- Pass `--config <path>` when the user or environment uses a non-default config
+- Treat missing configured AI command as a hard failure
+- Treat disabled optional channels as skipped, not failed
+- When the script reports failures, summarize the exact missing dependency and the shortest fix path
+
+For `setup-runtime`:
+
+- Run `scripts/setup-runtime.sh` from this skill directory
+- Prefer installing the compiled `ai-sched-cli` binary into `~/.local/bin`
+- Let the script offer install-or-skip choices for missing dependencies
+- At minimum, ensure the configured AI command or `acpx` is addressed before claiming the setup is usable
+- After setup, run `check-availability.sh` or `ai-sched-cli status` to verify the result
+
 For `configure-long-running`:
 
 - Only enter this path when the user explicitly asks for long-running behavior, startup on boot, or service deployment
-- Use `LONG_RUNNING_REFERENCE.md` in this skill folder as the setup reference
+- Use `references/LONG_RUNNING_REFERENCE.md` in this skill folder as the setup reference
 - Prefer user-level `systemd` unless the user explicitly asks for a system-wide service
 - After setup, verify both service status and `ai-sched-cli daemon --status`
 
@@ -223,5 +261,5 @@ For `inspect-runs`:
 - The backend stores execution parameters with each task and later runs them by assembling an `acpx` command at trigger time
 - The backend already supports manual run inspection
 - The daemon startup command is intentionally idempotent so the skill can call it every time after create/update
-- Long-running deployment guidance lives in `LONG_RUNNING_REFERENCE.md` inside this skill folder
+- Long-running deployment guidance lives in `references/LONG_RUNNING_REFERENCE.md` inside this skill folder
 - This skill should keep the user interaction natural and concise instead of exposing backend flags by default
