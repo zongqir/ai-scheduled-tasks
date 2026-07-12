@@ -125,11 +125,8 @@ func (c Config) validateTagRoutes() error {
 			return fmt.Errorf("tag_routes.%s must contain at least one channel", tag)
 		}
 		for _, target := range normalizedTargets {
-			if !isSupportedChannel(target.Channel) {
-				return fmt.Errorf("tag_routes.%s has unsupported channel: %s", tag, target.Channel)
-			}
-			if !c.isChannelEnabled(target.Channel) {
-				return fmt.Errorf("tag_routes.%s uses disabled channel: %s", tag, target.Channel)
+			if err := c.ValidateChannelTarget(target.Channel, target.ChannelRef); err != nil {
+				return fmt.Errorf("tag_routes.%s has invalid channel target: %w", tag, err)
 			}
 		}
 		normalized[tag] = normalizedTargets

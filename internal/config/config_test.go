@@ -13,10 +13,19 @@ func TestValidateRejectsInvalidTimezone(t *testing.T) {
 
 func TestValidateRejectsDisabledDefaultChannel(t *testing.T) {
 	cfg := Default()
+	cfg.DefaultChannel = "webhook"
 	cfg.Channels.Webhook.Enabled = false
 
 	if err := cfg.Validate(); err == nil {
 		t.Fatal("expected disabled default channel error")
+	}
+}
+
+func TestValidateAllowsEmptyDefaultChannel(t *testing.T) {
+	cfg := Default()
+
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("expected empty default_channel to be allowed, got %v", err)
 	}
 }
 
@@ -26,6 +35,16 @@ func TestValidateRejectsUnsupportedDefaultChannel(t *testing.T) {
 
 	if err := cfg.Validate(); err == nil {
 		t.Fatal("expected unsupported default channel error")
+	}
+}
+
+func TestValidateRejectsUnconfiguredDefaultChannel(t *testing.T) {
+	cfg := Default()
+	cfg.DefaultChannel = "webhook"
+	cfg.Channels.Webhook.Enabled = true
+
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected unconfigured default channel error")
 	}
 }
 
@@ -42,9 +61,24 @@ func TestValidateRejectsDisabledTagRouteChannel(t *testing.T) {
 	}
 }
 
+func TestValidateRejectsUnconfiguredTagRouteChannel(t *testing.T) {
+	cfg := Default()
+	cfg.Channels.Webhook.Enabled = true
+	cfg.TagRoutes = TagRoutes{
+		"work": {
+			{Channel: "webhook"},
+		},
+	}
+
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected unconfigured tag route channel error")
+	}
+}
+
 func TestResolveTagRouteTargetsUnionsAndDeduplicates(t *testing.T) {
 	cfg := Default()
 	cfg.Channels.WeComRobot.Enabled = true
+	cfg.Channels.WeComRobot.WebhookURL = "https://example.com/wecom"
 	cfg.Channels.WeChat.Enabled = true
 	cfg.TagRoutes = TagRoutes{
 		"urgent": {

@@ -29,6 +29,7 @@ func TestResolveTaskChannelsRejectsExtraRefs(t *testing.T) {
 func TestResolveCreateChannelsUsesTagRoutesBeforeDefault(t *testing.T) {
 	cfg := config.Default()
 	cfg.Channels.WeComRobot.Enabled = true
+	cfg.Channels.WeComRobot.WebhookURL = "https://example.com/wecom"
 	cfg.Channels.WeChat.Enabled = true
 	cfg.TagRoutes = config.TagRoutes{
 		"urgent": {
@@ -51,6 +52,8 @@ func TestResolveCreateChannelsUsesTagRoutesBeforeDefault(t *testing.T) {
 
 func TestResolveCreateChannelsExplicitWinsOverTagRoutes(t *testing.T) {
 	cfg := config.Default()
+	cfg.Channels.Webhook.Enabled = true
+	cfg.Channels.WeComRobot.WebhookURL = "https://example.com/wecom"
 	cfg.Channels.WeComRobot.Enabled = true
 	cfg.TagRoutes = config.TagRoutes{
 		"work": {
@@ -58,12 +61,36 @@ func TestResolveCreateChannelsExplicitWinsOverTagRoutes(t *testing.T) {
 		},
 	}
 
-	targets, err := resolveCreateChannels(cfg, []string{"webhook"}, nil, []string{"work"}, true)
+	targets, err := resolveCreateChannels(cfg, []string{"webhook"}, []string{"https://example.com/webhook"}, []string{"work"}, true)
 	if err != nil {
 		t.Fatalf("resolve create channels: %v", err)
 	}
 	if len(targets) != 1 || targets[0].Channel != "webhook" {
 		t.Fatalf("unexpected explicit targets: %#v", targets)
+	}
+}
+
+func TestResolveCreateChannelsRejectsNotifyTasksWithoutConfiguredRoute(t *testing.T) {
+	cfg := config.Default()
+
+	_, err := resolveCreateChannels(cfg, nil, nil, []string{"work"}, true)
+	if err == nil {
+		t.Fatal("expected missing notification route to fail")
+	}
+}
+
+func TestResolveCreateChannelsAcceptsConfiguredDefaultChannel(t *testing.T) {
+	cfg := config.Default()
+	cfg.DefaultChannel = "webhook"
+	cfg.Channels.Webhook.Enabled = true
+	cfg.Channels.Webhook.URL = "https://example.com/webhook"
+
+	targets, err := resolveCreateChannels(cfg, nil, nil, nil, true)
+	if err != nil {
+		t.Fatalf("resolve configured default channel: %v", err)
+	}
+	if len(targets) != 1 || targets[0].Channel != "webhook" {
+		t.Fatalf("unexpected default targets: %#v", targets)
 	}
 }
 

@@ -87,6 +87,10 @@ if command -v node >/dev/null 2>&1; then
 fi
 
 ai_command="acpx"
+webhook_enabled="false"
+webhook_url=""
+wecom_enabled="false"
+wecom_webhook_url=""
 dida_enabled="false"
 dida_cli="dida365"
 wechat_enabled="false"
@@ -100,6 +104,10 @@ if [[ -f "$config_path" && "$has_node" -eq 1 ]]; then
   while IFS='=' read -r key value; do
     case "$key" in
       AI_COMMAND) ai_command="$value" ;;
+      WEBHOOK_ENABLED) webhook_enabled="$value" ;;
+      WEBHOOK_URL) webhook_url="$value" ;;
+      WECOM_ENABLED) wecom_enabled="$value" ;;
+      WECOM_WEBHOOK_URL) wecom_webhook_url="$value" ;;
       DIDA_ENABLED) dida_enabled="$value" ;;
       DIDA_CLI) dida_cli="$value" ;;
       WECHAT_ENABLED) wechat_enabled="$value" ;;
@@ -116,6 +124,10 @@ function emit(key, value) {
   process.stdout.write(`${key}=${String(value ?? "")}\n`);
 }
 emit("AI_COMMAND", cfg?.ai?.command || "acpx");
+emit("WEBHOOK_ENABLED", Boolean(cfg?.channels?.webhook?.enabled));
+emit("WEBHOOK_URL", cfg?.channels?.webhook?.url || "");
+emit("WECOM_ENABLED", Boolean(cfg?.channels?.wecom_robot?.enabled));
+emit("WECOM_WEBHOOK_URL", cfg?.channels?.wecom_robot?.webhook_url || "");
 emit("DIDA_ENABLED", Boolean(cfg?.channels?.dida?.enabled));
 emit("DIDA_CLI", cfg?.channels?.dida?.cli_path || "dida365");
 emit("WECHAT_ENABLED", Boolean(cfg?.channels?.wechat?.enabled));
@@ -161,6 +173,26 @@ else
   failures=$((failures + 1))
 fi
 
+if [[ "$webhook_enabled" == "true" ]]; then
+  if [[ -n "$webhook_url" ]]; then
+    print_check "OK" "channel:webhook" "url configured"
+  else
+    print_check "WARN" "channel:webhook" "enabled but url is empty"
+  fi
+else
+  print_check "SKIP" "channel:webhook" "disabled"
+fi
+
+if [[ "$wecom_enabled" == "true" ]]; then
+  if [[ -n "$wecom_webhook_url" ]]; then
+    print_check "OK" "channel:wecom_robot" "webhook_url configured"
+  else
+    print_check "WARN" "channel:wecom_robot" "enabled but webhook_url is empty"
+  fi
+else
+  print_check "SKIP" "channel:wecom_robot" "disabled"
+fi
+
 if [[ "$dida_enabled" == "true" ]]; then
   if resolve_command "$dida_cli" >/dev/null 2>&1; then
     print_check "OK" "channel:dida" "$dida_cli -> $(resolve_command "$dida_cli")"
@@ -191,6 +223,10 @@ if [[ "$wechat_enabled" == "true" ]]; then
   fi
 else
   print_check "SKIP" "channel:wechat" "disabled"
+fi
+
+if [[ "$webhook_enabled" != "true" && "$wecom_enabled" != "true" && "$dida_enabled" != "true" && "$wechat_enabled" != "true" ]]; then
+  print_check "WARN" "notifications" "no enabled delivery channels; configure one or use --no-notify"
 fi
 
 echo

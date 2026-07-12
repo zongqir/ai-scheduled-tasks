@@ -157,7 +157,8 @@ Rules:
 - For "run_agent", set "agent" to the configured default agent unless the user clearly specifies another one
 - For "run_agent", include a concrete one-shot "instruction" that will be passed directly to acpx for execution at runtime
 - Use the provided cwd unless the user explicitly asks for a different directory
-- When notify_policy is not "off", use the provided default_channel unless the user clearly requests another channel
+- When notify_policy is not "off", use the provided default_channel only when it is non-empty and the user does not clearly request another channel
+- If no default_channel is provided and the user does not explicitly choose a channel, omit channel
 - Include "tags" when the user explicitly asks for labels/tags or category metadata
 - summary should be short and concrete
 
@@ -228,9 +229,6 @@ func validateTaskDraft(draft TaskDraft) error {
 	}
 	if strings.TrimSpace(draft.CWD) == "" {
 		return fmt.Errorf("task cwd is required")
-	}
-	if notifyPolicy != "off" && strings.TrimSpace(draft.Channel) == "" {
-		return fmt.Errorf("task channel is required")
 	}
 	if notifyPolicy == "off" && strings.TrimSpace(draft.Channel) != "" {
 		return fmt.Errorf("task channel must be empty when notify_policy is off")

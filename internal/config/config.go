@@ -71,7 +71,7 @@ func Default() Config {
 	return Config{
 		Timezone:       "Asia/Shanghai",
 		DatabasePath:   "~/.local/share/ai-sched-cli/tasks.db",
-		DefaultChannel: "webhook",
+		DefaultChannel: "",
 		AI: AIConfig{
 			Command:        "acpx",
 			Args:           []string{},
@@ -87,7 +87,7 @@ func Default() Config {
 		},
 		Channels: ChannelConfigs{
 			Webhook: WebhookConfig{
-				Enabled: true,
+				Enabled: false,
 			},
 			WeComRobot: WeComConfig{
 				Enabled: false,
@@ -241,14 +241,13 @@ func (c Config) Validate() error {
 	if c.DatabasePath == "" {
 		return fmt.Errorf("database_path is required")
 	}
-	if c.DefaultChannel == "" {
-		return fmt.Errorf("default_channel is required")
-	}
-	if !isSupportedChannel(c.DefaultChannel) {
-		return fmt.Errorf("unsupported default_channel: %s", c.DefaultChannel)
-	}
-	if !c.isChannelEnabled(c.DefaultChannel) {
-		return fmt.Errorf("default_channel %q is not enabled", c.DefaultChannel)
+	if strings.TrimSpace(c.DefaultChannel) != "" {
+		if !isSupportedChannel(c.DefaultChannel) {
+			return fmt.Errorf("unsupported default_channel: %s", c.DefaultChannel)
+		}
+		if err := c.ValidateChannelTarget(c.DefaultChannel, ""); err != nil {
+			return fmt.Errorf("default_channel %q is invalid: %w", c.DefaultChannel, err)
+		}
 	}
 	if c.Daemon.PollIntervalSeconds <= 0 {
 		return fmt.Errorf("daemon.poll_interval_seconds must be > 0")
@@ -341,6 +340,43 @@ func (c Config) isChannelEnabled(name string) bool {
 	default:
 		return false
 	}
+}
+
+func (c Config) ValidateChannelTarget(name, ref string) error {
+	channelName := strings.TrimSpace(name)
+	channelRef := strings.TrimSpace(ref)
+	if channelName == "" {
+		return fmt.Errorf("channel cannot be empty")
+	}
+	if !isSupportedChannel(channelName) {
+		return fmt.Errorf("unsupported channel: %s", channelName)
+	}
+	if !c.isChannelEnabled(channelName) {
+		return fmt.Errorf("channel %q is disabled", channelName)
+	}
+
+	switch channelName {
+	case "webhook":
+		if channelRef == "" && strings.TrimSpace(c.Channels.Webhook.URL) == "" {
+			return fmt.Errorf("channel %q requires channels.webhook.url or channel_ref", channelName)
+		}
+	case "wecom_robot":
+		if channelRef == "" && strings.TrimSpace(c.Channels.WeComRobot.WebhookURL) == "" {
+			return fmt.Errorf("channel %q requires channels.wecom_robot.webhook_url or channel_ref", channelName)
+		}
+	}
+	return nil
+}
+
+func (c Config) ChannelConfigWarnings() []string {
+	var warnings []string
+	if c.Channels.Webhook.Enabled && strings.TrimSpace(c.Channels.Webhook.URL) == "" {
+		warnings = append(warnings, "channel webhook is enabled but url is empty")
+	}
+	if c.Channels.WeComRobot.Enabled && strings.TrimSpace(c.Channels.WeComRobot.WebhookURL) == "" {
+		warnings = append(warnings, "channel wecom_robot is enabled but webhook_url is empty")
+	}
+	return warnings
 }
 
 func isSupportedChannel(name string) bool {

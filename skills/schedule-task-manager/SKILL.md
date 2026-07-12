@@ -111,6 +111,7 @@ Map user requests into one of these operations:
 - `run`
 - `inspect-runs`
 - `configure-tag-route`
+- `configure-channel`
 - `check-availability`
 - `setup-runtime`
 - `configure-long-running`
@@ -122,6 +123,7 @@ Examples:
 - "把每天六点那个改成七点" -> `update`
 - "给这个任务打上 work 和 ci 标签" -> `update`
 - "把紧急标签路由到滴答和微信" -> `configure-tag-route`
+- "配置一下通知渠道" -> `configure-channel`
 - "看看现在这套能不能跑" -> `check-availability`
 - "先帮我把这个装好，缺什么你自己处理，不能装的就先跳过" -> `setup-runtime`
 - "帮我把这个常驻跑起来" -> `configure-long-running`
@@ -227,12 +229,26 @@ For `configure-tag-route`:
 - Use repeated `--channel` flags for fan-out routes
 - Preview the final mapping before changing it
 
+For `configure-channel`:
+
+- When the user wants to set up a notification channel, first check current config with `ai-sched-cli status`
+- List available channels: webhook, wecom_robot, dida, wechat
+- Ask the user which channel to configure and collect the required values:
+  - webhook: url
+  - wecom_robot: webhook_url
+  - dida: cli_path (default: dida365), default_project_id, default_priority
+  - wechat: bridge_url, state_file
+- Edit the config file at the resolved config path (shown by `ai-sched-cli status`) to set the values
+- After editing, run `ai-sched-cli status` to verify the channel is now properly configured
+- Always run `ai-sched-cli daemon --ensure` after changing config
+
 For `check-availability`:
 
 - Run `scripts/check-availability.sh` from this skill directory
 - Pass `--config <path>` when the user or environment uses a non-default config
 - Treat missing configured AI command as a hard failure
 - Treat disabled optional channels as skipped, not failed
+- Treat enabled-but-unconfigured channels (e.g., webhook with empty url) as WARN, not FAIL — the user can ignore or fix them later
 - When the script reports failures, summarize the exact missing dependency and the shortest fix path
 
 For `setup-runtime`:
@@ -241,6 +257,17 @@ For `setup-runtime`:
 - Prefer installing the compiled `ai-sched-cli` binary into `~/.local/bin`
 - Let the script offer install-or-skip choices for missing dependencies
 - At minimum, ensure the configured AI command or `acpx` is addressed before claiming the setup is usable
+- After binary install, run `ai-sched-cli init` if no config exists yet
+- After init, always check channel configuration:
+  1. Run `ai-sched-cli status`
+  2. If `default channel: -` or `enabled channels: -`, tell the user notifications are not configured yet and ask whether to configure a channel now
+     - If yes, use `configure-channel`
+     - If no, remind them that future notified tasks must use an explicit `--channel`, matching tag routes, or `--no-notify`
+  3. If any channels are enabled but not configured (e.g., webhook URL empty), ask the user:
+     - "xx 渠道已启用但未配置，是否现在配置？[Y/n]"
+     - If yes, guide the user to fill in the required fields (edit the config JSON or use the appropriate setup)
+     - If no, leave it as-is (the user knowingly accepts the unconfigured state)
+  4. After handling, run `ai-sched-cli status` again to confirm
 - After setup, run `check-availability.sh` or `ai-sched-cli status` to verify the result
 
 For `configure-long-running`:

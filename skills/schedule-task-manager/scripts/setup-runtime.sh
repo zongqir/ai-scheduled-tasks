@@ -386,13 +386,13 @@ if check_cmd "$binary_name"; then
   say
   say "Next steps"
   say "1. ${binary_name} init"
-  say "2. ${binary_name} status"
+  say "2. ${binary_name} status   (check for enabled-but-unconfigured channels)"
   say "3. ${binary_name} daemon --ensure"
 elif [[ -x "$binary_target" ]]; then
   say
   say "Next steps"
   say "1. ${binary_target} init"
-  say "2. ${binary_target} status"
+  say "2. ${binary_target} status   (check for enabled-but-unconfigured channels)"
   say "3. ${binary_target} daemon --ensure"
 else
   say

@@ -131,9 +131,25 @@ func runInit(globalConfigPath string, args []string) error {
 		fmt.Printf("config already present: %s\n", resolvedConfigPath)
 	}
 	fmt.Printf("database ready: %s\n", resolvedDBPath)
-	fmt.Printf("default channel: %s\n", cfg.DefaultChannel)
-	fmt.Printf("enabled channels: %s\n", strings.Join(cfg.EnabledChannels(), ", "))
+	fmt.Printf("default channel: %s\n", emptyDash(cfg.DefaultChannel))
+	fmt.Printf("enabled channels: %s\n", emptyDash(strings.Join(cfg.EnabledChannels(), ", ")))
+
+	warnings := checkChannelConfigs(cfg)
+	for _, w := range warnings {
+		fmt.Fprintf(os.Stderr, "WARN: %s\n", w)
+	}
 	return nil
+}
+
+func checkChannelConfigs(cfg config.Config) []string {
+	warnings := append([]string(nil), cfg.ChannelConfigWarnings()...)
+	if len(cfg.EnabledChannels()) == 0 {
+		warnings = append(warnings, "no notification channels are enabled; configure a channel before using default notifications, or use --no-notify")
+	}
+	if strings.TrimSpace(cfg.DefaultChannel) == "" && len(cfg.TagRoutes) == 0 {
+		warnings = append(warnings, "no default notification route is configured; set default_channel, configure tag_routes, or pass --channel when creating notified tasks")
+	}
+	return warnings
 }
 
 func runAdd(globalConfigPath string, args []string) error {
@@ -661,6 +677,9 @@ func runUpdate(globalConfigPath string, args []string) error {
 		if err != nil {
 			return err
 		}
+		if err := validateTaskChannelTargets(cfg, updated.Channels); err != nil {
+			return err
+		}
 		updated.Channel = firstChannelName(updated.Channels)
 		updated.ChannelRef = firstChannelRef(updated.Channels)
 	}
@@ -772,11 +791,14 @@ func runStatus(globalConfigPath string, args []string) error {
 	fmt.Printf("config: %s\n", resolvedConfigPath)
 	fmt.Printf("database: %s\n", resolvedDBPath)
 	fmt.Printf("timezone: %s\n", cfg.Timezone)
-	fmt.Printf("default channel: %s\n", cfg.DefaultChannel)
-	fmt.Printf("enabled channels: %s\n", strings.Join(cfg.EnabledChannels(), ", "))
+	fmt.Printf("default channel: %s\n", emptyDash(cfg.DefaultChannel))
+	fmt.Printf("enabled channels: %s\n", emptyDash(strings.Join(cfg.EnabledChannels(), ", ")))
 	fmt.Printf("tag routes: %d\n", len(cfg.TagRoutes))
 	fmt.Printf("task counts: total=%d pending=%d running=%d done=%d failed=%d cancelled=%d\n",
 		stats.Total, stats.Pending, stats.Running, stats.Done, stats.Failed, stats.Cancelled)
+	for _, warning := range checkChannelConfigs(cfg) {
+		fmt.Printf("warning: %s\n", warning)
+	}
 	if *noCheck {
 		fmt.Println("health checks: skipped")
 		return nil
@@ -1285,13 +1307,28 @@ func resolveCreateChannels(cfg config.Config, explicitChannels, refs, tags []str
 		}
 		return nil, nil
 	}
+
+	var targets []task.ChannelTarget
+	var err error
 	if len(explicitChannels) > 0 || len(refs) > 0 {
-		return resolveTaskChannels(explicitChannels, refs, cfg.DefaultChannel)
+		targets, err = resolveTaskChannels(explicitChannels, refs, cfg.DefaultChannel)
+		if err != nil {
+			return nil, err
+		}
+		return targets, validateTaskChannelTargets(cfg, targets)
 	}
 	if routed := cfg.ResolveTagRouteTargets(tags); len(routed) > 0 {
-		return configTargetsToTask(routed), nil
+		targets = configTargetsToTask(routed)
+		return targets, validateTaskChannelTargets(cfg, targets)
 	}
-	return resolveTaskChannels(nil, nil, cfg.DefaultChannel)
+	if strings.TrimSpace(cfg.DefaultChannel) == "" {
+		return nil, fmt.Errorf("notifications are enabled but no delivery channel is configured; set default_channel, configure tag_routes, pass --channel, or use --no-notify")
+	}
+	targets, err = resolveTaskChannels(nil, nil, cfg.DefaultChannel)
+	if err != nil {
+		return nil, err
+	}
+	return targets, validateTaskChannelTargets(cfg, targets)
 }
 
 func resolveNotifyPolicy(notify, noNotify bool) (task.NotifyPolicy, error) {
@@ -1305,6 +1342,15 @@ func resolveNotifyPolicy(notify, noNotify bool) (task.NotifyPolicy, error) {
 	default:
 		return task.NotifyPolicyDefaultOn, nil
 	}
+}
+
+func validateTaskChannelTargets(cfg config.Config, targets []task.ChannelTarget) error {
+	for _, target := range targets {
+		if err := cfg.ValidateChannelTarget(target.Channel, target.ChannelRef); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func firstChannelName(targets []task.ChannelTarget) string {
