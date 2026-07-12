@@ -39,7 +39,10 @@ actually needs them.
   such as the configured AI command, `acpx`, `dida365`, or the WeChat bridge.
 - `scripts/setup-runtime.sh`
   Run this script when the user wants a compiled binary installed locally, or
-  when they want guided dependency setup with install-or-skip choices.
+  when they want guided dependency setup with install-or-skip choices. The
+  script prefers the latest GitHub Release binary and falls back to source
+  build when needed, so it can also be used from a standalone GitHub-downloaded
+  copy.
 - `references/LONG_RUNNING_REFERENCE.md`
   Use this reference only when the user explicitly asks for long-running setup,
   startup on boot, background service management, or stable deployment.

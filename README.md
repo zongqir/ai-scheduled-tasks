@@ -72,12 +72,19 @@ skills/schedule-task-manager/scripts/setup-runtime.sh
 skills/schedule-task-manager/scripts/check-availability.sh
 ```
 
+Direct GitHub install:
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/zongqir/ai-scheduled-tasks/main/skills/schedule-task-manager/scripts/setup-runtime.sh) --non-interactive
+```
+
 Notes:
 
 - Current storage is SQLite via `modernc.org/sqlite`
 - The module now targets Go `1.25`
 - The default AI runtime is `acpx`
 - For Agents and skills, prefer a compiled `ai-sched-cli` binary over `go run`
+- `setup-runtime.sh` prefers the latest GitHub Release binary and falls back to clone+build when no release asset is available
 - Repeating `--channel` / `--channel-ref` builds a channel fan-out list for one task
 - Tasks default to notifying, but `add` / `update` also support `--no-notify` for silent execution
 - Channel selection priority is: explicit `--channel` > matched `tag_routes` > `default_channel`
