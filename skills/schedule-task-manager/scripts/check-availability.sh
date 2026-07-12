@@ -29,7 +29,7 @@ Usage: check-availability.sh [--config <path>] [--repo-root <path>]
 Checks whether ai-sched-cli's core runtime dependencies are available.
 
 - Reads config.json when present to detect the configured AI command and
-  enabled channels.
+  enabled channels and configured AI agent.
 - Falls back to checking `acpx` when no config is available.
 - Verifies optional integrations only when their channels are enabled.
 EOF
@@ -87,6 +87,7 @@ if command -v node >/dev/null 2>&1; then
 fi
 
 ai_command="acpx"
+ai_agent=""
 webhook_enabled="false"
 webhook_url=""
 wecom_enabled="false"
@@ -104,6 +105,7 @@ if [[ -f "$config_path" && "$has_node" -eq 1 ]]; then
   while IFS='=' read -r key value; do
     case "$key" in
       AI_COMMAND) ai_command="$value" ;;
+      AI_AGENT) ai_agent="$value" ;;
       WEBHOOK_ENABLED) webhook_enabled="$value" ;;
       WEBHOOK_URL) webhook_url="$value" ;;
       WECOM_ENABLED) wecom_enabled="$value" ;;
@@ -124,6 +126,7 @@ function emit(key, value) {
   process.stdout.write(`${key}=${String(value ?? "")}\n`);
 }
 emit("AI_COMMAND", cfg?.ai?.command || "acpx");
+emit("AI_AGENT", cfg?.ai?.agent || "");
 emit("WEBHOOK_ENABLED", Boolean(cfg?.channels?.webhook?.enabled));
 emit("WEBHOOK_URL", cfg?.channels?.webhook?.url || "");
 emit("WECOM_ENABLED", Boolean(cfg?.channels?.wecom_robot?.enabled));
@@ -162,8 +165,13 @@ fi
 
 if [[ "$config_present" == "true" ]]; then
   print_check "INFO" "config" "loaded"
+  if [[ -n "$ai_agent" ]]; then
+    print_check "INFO" "ai-agent" "$ai_agent"
+  else
+    print_check "WARN" "ai-agent" "not configured; run ai-sched-cli init --agent <name>"
+  fi
 else
-  print_check "WARN" "config" "not found or node unavailable, using defaults"
+  print_check "WARN" "config" "not found or node unavailable; run ai-sched-cli init --agent <name> before scheduling AI tasks"
 fi
 
 if resolve_command "$ai_command" >/dev/null 2>&1; then

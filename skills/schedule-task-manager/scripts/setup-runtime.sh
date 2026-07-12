@@ -38,6 +38,7 @@ Installs the local ai-sched-cli binary and checks key runtime dependencies.
 - Prefers downloading the latest GitHub Release binary for this platform
 - Falls back to cloning/building from source when no release asset is available
 - Checks the configured AI command, defaulting to acpx
+- Requires an explicit AI agent choice when first running ai-sched-cli init
 - Offers optional installation for known userland dependencies
 - Lets the operator skip optional or currently inconvenient dependencies
 EOF
@@ -385,13 +386,13 @@ fi
 if check_cmd "$binary_name"; then
   say
   say "Next steps"
-  say "1. ${binary_name} init"
+  say "1. Choose an AI agent, then run: ${binary_name} init --agent <codex|opencode|claude>"
   say "2. ${binary_name} status   (check for enabled-but-unconfigured channels)"
   say "3. ${binary_name} daemon --ensure"
 elif [[ -x "$binary_target" ]]; then
   say
   say "Next steps"
-  say "1. ${binary_target} init"
+  say "1. Choose an AI agent, then run: ${binary_target} init --agent <codex|opencode|claude>"
   say "2. ${binary_target} status   (check for enabled-but-unconfigured channels)"
   say "3. ${binary_target} daemon --ensure"
 else

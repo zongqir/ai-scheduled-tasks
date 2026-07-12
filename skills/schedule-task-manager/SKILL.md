@@ -1,6 +1,6 @@
 ---
 name: schedule-task-manager
-version: 1.0.0
+version: 1.2.0
 description: >-
   Use this skill when the user wants to create, update, delete, inspect, or run
   scheduled AI tasks in natural language, configure tag-to-channel routing, or
@@ -47,6 +47,11 @@ actually needs them.
   copy. When reliability matters more than one-line brevity, prefer cloning or
   unpacking the GitHub repository and executing the script from that temporary
   checkout instead of depending on raw-script fetch availability.
+- `references/INITIALIZATION_REFERENCE.md`
+  Read this reference before first-time initialization, when the scheduler
+  configuration is missing or being changed, or when setup needs to choose an
+  AI agent or notification route. It defines the required agent-selection,
+  channel-validation, and non-interactive initialization flow.
 - `references/LONG_RUNNING_REFERENCE.md`
   Use this reference only when the user explicitly asks for long-running setup,
   startup on boot, background service management, or stable deployment.
@@ -62,6 +67,13 @@ Instead:
 3. say what you are about to do
 4. if the request is ambiguous, ask one short clarification question
 5. otherwise execute the local command
+
+## Initialization Gate
+
+Before creating `run_agent` tasks, starting the daemon, or claiming setup is
+complete, determine whether scheduler configuration exists. When it is missing
+or needs to change, read `references/INITIALIZATION_REFERENCE.md` and follow it
+before continuing. Do not silently choose an AI agent or notification channel.
 
 ## Repository Commands
 
@@ -184,6 +196,26 @@ Execution rules:
 2. If no explicit channels are given, the CLI resolves channels from matching tag routes
 3. If no route matches, the CLI falls back to `default_channel`
 
+## Notification Policy
+
+Use the configured notification route by default for scheduled tasks. When the
+current `default_channel` is `wechat`, describe the outcome plainly as a WeChat
+reminder rather than merely saying that notifications are enabled.
+
+Before creating or updating a task that will notify, include the resolved
+channel in the preview. For example: "任务完成后会通过微信提醒你。"
+
+When the user clearly says this occurrence should not notify, such as
+"本次不提醒" or "不用提醒", do not ask a follow-up question. Create or update
+the task with `--no-notify`, omit delivery channels, and confirm with:
+
+"本次任务不会再提醒。"
+
+If no configured default or tag route can deliver a notification, explain that
+before creating a notified task and ask whether to configure a channel, choose
+an explicit channel, or make this occurrence silent. Never silently assume
+WeChat on a machine where it is not configured.
+
 ## Preview Policy
 
 Before mutating anything, say what you are about to do in plain language.
@@ -192,8 +224,16 @@ Good examples:
 
 - "我将创建任务：明天上午 9 点提醒你看 CI。"
 - "我将创建任务：明天上午 9 点在 `/home/admin/code/project-a` 下提醒你看 CI，标签为 `work,ci`。"
+- "我将创建任务：明天上午 9 点检查 CI；到点后将使用已配置的 `codex` agent 执行。"
+- "我将创建任务：明天上午 9 点检查 CI；到点后由 `codex` 执行，完成后通过微信提醒你。"
+- "我将创建任务：明天上午 9 点检查 CI；到点后由 `codex` 执行。本次任务不会再提醒。"
 - "我将删除任务 `task_xxx`：每天下午 6 点看 CI。"
 - "我将把任务 `task_xxx` 的执行时间从 18:00 改到 19:00。"
+
+For every `run_agent` create, update, or manual run, include the resolved agent
+in the preview. Say that it uses the configured default unless that task has an
+explicit agent override. Do not make this statement for an `action=notify`
+task, because it does not execute an AI agent.
 
 ## Confirmation Policy
 
@@ -215,6 +255,12 @@ Examples:
 
 For `create`:
 
+- State the configured default agent in the preview for `run_agent` tasks. If
+  initialization has not selected one yet, follow the Initialization Gate
+  before creating the task.
+- Unless the user explicitly asks not to notify, use the configured route and
+  state the resolved channel in the preview. Follow the Notification Policy for
+  `--no-notify` requests and missing routes.
 - If the user gave natural language only, prefer `ai-sched-cli add "<request>"`
 - Let the CLI's AI create-task path resolve the schedule
 - If directory or tags are already confidently resolved, prefer explicit flags such as `--cwd` and `--tag`
@@ -257,17 +303,7 @@ For `setup-runtime`:
 - Prefer installing the compiled `ai-sched-cli` binary into `~/.local/bin`
 - Let the script offer install-or-skip choices for missing dependencies
 - At minimum, ensure the configured AI command or `acpx` is addressed before claiming the setup is usable
-- After binary install, run `ai-sched-cli init` if no config exists yet
-- After init, always check channel configuration:
-  1. Run `ai-sched-cli status`
-  2. If `default channel: -` or `enabled channels: -`, tell the user notifications are not configured yet and ask whether to configure a channel now
-     - If yes, use `configure-channel`
-     - If no, remind them that future notified tasks must use an explicit `--channel`, matching tag routes, or `--no-notify`
-  3. If any channels are enabled but not configured (e.g., webhook URL empty), ask the user:
-     - "xx 渠道已启用但未配置，是否现在配置？[Y/n]"
-     - If yes, guide the user to fill in the required fields (edit the config JSON or use the appropriate setup)
-     - If no, leave it as-is (the user knowingly accepts the unconfigured state)
-  4. After handling, run `ai-sched-cli status` again to confirm
+- Read and follow `references/INITIALIZATION_REFERENCE.md` before first-time initialization or any configuration change. It covers the required `init --agent` command and post-init channel verification.
 - After setup, run `check-availability.sh` or `ai-sched-cli status` to verify the result
 
 For `configure-long-running`:
@@ -293,6 +329,7 @@ For `inspect-runs`:
 ## Notes
 
 - The backend stores execution parameters with each task and later runs them by assembling an `acpx` command at trigger time
+- A scheduled timestamp is not an exact delivery timestamp: the daemon polls for due tasks every second by default, notifications enter an outbox only after execution, and that outbox is polled every 10 seconds by default. Explain this expectation when users create time-sensitive tasks; AI execution and external delivery can add more delay.
 - The backend already supports manual run inspection
 - The daemon startup command is intentionally idempotent so the skill can call it every time after create/update
 - Long-running deployment guidance lives in `references/LONG_RUNNING_REFERENCE.md` inside this skill folder

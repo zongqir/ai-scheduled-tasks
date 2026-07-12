@@ -1,6 +1,7 @@
 package app
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"flag"
@@ -77,6 +78,7 @@ func runInit(globalConfigPath string, args []string) error {
 	fs.SetOutput(os.Stderr)
 
 	force := fs.Bool("force", false, "overwrite config with defaults")
+	agent := fs.String("agent", "", "AI agent to use with acpx, e.g. codex, opencode, or claude")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -86,23 +88,39 @@ func runInit(globalConfigPath string, args []string) error {
 		return err
 	}
 
-	var (
-		cfg     config.Config
-		created bool
-	)
+	resolvedConfigPath, err := config.ExpandPath(configPath)
+	if err != nil {
+		return err
+	}
 
-	switch {
-	case *force:
+	_, statErr := os.Stat(resolvedConfigPath)
+	configExists := statErr == nil
+	if statErr != nil && !os.IsNotExist(statErr) {
+		return fmt.Errorf("stat config: %w", statErr)
+	}
+
+	var cfg config.Config
+	created := !configExists || *force
+	if *force || !configExists {
 		cfg = config.Default()
+		selectedAgent, selectErr := selectInitAgent(*agent)
+		if selectErr != nil {
+			return selectErr
+		}
+		cfg.AI.Agent = selectedAgent
 		if err := config.Save(configPath, cfg); err != nil {
 			return err
 		}
-		created = true
-	default:
-		var ensureErr error
-		cfg, created, ensureErr = config.Ensure(configPath)
-		if ensureErr != nil {
-			return ensureErr
+	} else {
+		cfg, err = config.Load(configPath)
+		if err != nil {
+			return err
+		}
+		if strings.TrimSpace(*agent) != "" {
+			cfg.AI.Agent = strings.TrimSpace(*agent)
+			if err := config.Save(configPath, cfg); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -116,10 +134,6 @@ func runInit(globalConfigPath string, args []string) error {
 		return fmt.Errorf("ping database: %w", err)
 	}
 
-	resolvedConfigPath, err := config.ExpandPath(configPath)
-	if err != nil {
-		return err
-	}
 	resolvedDBPath, err := cfg.ResolvedDatabasePath()
 	if err != nil {
 		return err
@@ -131,14 +145,58 @@ func runInit(globalConfigPath string, args []string) error {
 		fmt.Printf("config already present: %s\n", resolvedConfigPath)
 	}
 	fmt.Printf("database ready: %s\n", resolvedDBPath)
+	fmt.Printf("AI runtime: %s\n", cfg.AI.Command)
+	fmt.Printf("AI agent: %s\n", cfg.AI.Agent)
 	fmt.Printf("default channel: %s\n", emptyDash(cfg.DefaultChannel))
 	fmt.Printf("enabled channels: %s\n", emptyDash(strings.Join(cfg.EnabledChannels(), ", ")))
+	printDeliveryTiming(cfg)
 
 	warnings := checkChannelConfigs(cfg)
 	for _, w := range warnings {
 		fmt.Fprintf(os.Stderr, "WARN: %s\n", w)
 	}
 	return nil
+}
+
+func selectInitAgent(flagValue string) (string, error) {
+	if selected := strings.TrimSpace(flagValue); selected != "" {
+		return selected, nil
+	}
+
+	info, err := os.Stdin.Stat()
+	if err != nil {
+		return "", fmt.Errorf("inspect stdin for AI agent selection: %w", err)
+	}
+	if info.Mode()&os.ModeCharDevice == 0 {
+		return "", fmt.Errorf("AI agent must be selected for first-time initialization; rerun with --agent <name>, e.g. --agent codex")
+	}
+
+	fmt.Print("Choose the AI agent used for scheduled AI tasks (for example: codex, opencode, claude): ")
+	selected, err := bufio.NewReader(os.Stdin).ReadString('\n')
+	if err != nil && len(selected) == 0 {
+		return "", fmt.Errorf("read AI agent selection: %w", err)
+	}
+	selected = strings.TrimSpace(selected)
+	if selected == "" {
+		return "", fmt.Errorf("AI agent is required; rerun init and choose an agent, or pass --agent <name>")
+	}
+	return selected, nil
+}
+
+func printDeliveryTiming(cfg config.Config) {
+	fmt.Printf("delivery timing: due tasks are detected within about %ds; notifications are queued after execution and usually sent within about %ds after that\n",
+		cfg.Daemon.PollIntervalSeconds,
+		cfg.Daemon.NotificationPollSeconds,
+	)
+	fmt.Println("delivery timing note: AI execution time and external channel/network latency are additional, so delivery is not guaranteed at the exact scheduled second")
+}
+
+func printTaskNotificationExpectation(record task.Task) {
+	if !record.ShouldNotify() {
+		fmt.Println("notification: 本次任务不会再提醒")
+		return
+	}
+	fmt.Printf("notification: this task will notify via %s\n", formatChannelTargets(record.EffectiveChannels()))
 }
 
 func checkChannelConfigs(cfg config.Config) []string {
@@ -264,6 +322,7 @@ func runAdd(globalConfigPath string, args []string) error {
 	fmt.Printf("next run: %s\n", formatUnix(record.NextRunAt, record.Timezone))
 	fmt.Printf("notify policy: %s\n", record.NotifyPolicy)
 	fmt.Printf("channels: %s\n", formatChannelTargets(record.EffectiveChannels()))
+	printTaskNotificationExpectation(record)
 	fmt.Printf("cwd: %s\n", record.CWD)
 	fmt.Printf("tags: %s\n", formatTags(record.Tags))
 	return nil
@@ -313,6 +372,7 @@ func runAddWithAI(cfg config.Config, repo *task.Repository, rawInput, taskSummar
 	fmt.Printf("next run: %s\n", formatUnix(record.NextRunAt, record.Timezone))
 	fmt.Printf("notify policy: %s\n", record.NotifyPolicy)
 	fmt.Printf("channels: %s\n", formatChannelTargets(record.EffectiveChannels()))
+	printTaskNotificationExpectation(record)
 	fmt.Printf("cwd: %s\n", record.CWD)
 	fmt.Printf("tags: %s\n", formatTags(record.Tags))
 	return nil
@@ -741,6 +801,7 @@ func runUpdate(globalConfigPath string, args []string) error {
 	fmt.Printf("next run: %s\n", formatUnix(record.NextRunAt, record.Timezone))
 	fmt.Printf("notify policy: %s\n", record.NotifyPolicy)
 	fmt.Printf("channels: %s\n", formatChannelTargets(record.EffectiveChannels()))
+	printTaskNotificationExpectation(record)
 	fmt.Printf("cwd: %s\n", record.CWD)
 	fmt.Printf("tags: %s\n", formatTags(record.Tags))
 	return nil
@@ -791,6 +852,8 @@ func runStatus(globalConfigPath string, args []string) error {
 	fmt.Printf("config: %s\n", resolvedConfigPath)
 	fmt.Printf("database: %s\n", resolvedDBPath)
 	fmt.Printf("timezone: %s\n", cfg.Timezone)
+	fmt.Printf("AI runtime: %s\n", cfg.AI.Command)
+	fmt.Printf("AI agent: %s\n", cfg.AI.Agent)
 	fmt.Printf("default channel: %s\n", emptyDash(cfg.DefaultChannel))
 	fmt.Printf("enabled channels: %s\n", emptyDash(strings.Join(cfg.EnabledChannels(), ", ")))
 	fmt.Printf("tag routes: %d\n", len(cfg.TagRoutes))
@@ -799,6 +862,7 @@ func runStatus(globalConfigPath string, args []string) error {
 	for _, warning := range checkChannelConfigs(cfg) {
 		fmt.Printf("warning: %s\n", warning)
 	}
+	printDeliveryTiming(cfg)
 	if *noCheck {
 		fmt.Println("health checks: skipped")
 		return nil
@@ -1420,7 +1484,7 @@ func formatUnix(ts int64, timezone string) string {
 
 func printUsage() {
 	fmt.Println("ai-sched-cli commands:")
-	fmt.Println("  ai-sched-cli init [--force]")
+	fmt.Println("  ai-sched-cli init [--agent <name>] [--force]")
 	fmt.Println("  ai-sched-cli add [--summary <text>] (--at <time> | --in <duration>) [--repeat <rule>] [--channel <name>] [--cwd <dir>] [--tag <name>] [text]")
 	fmt.Println("  ai-sched-cli list [--all] [--status pending,running,failed] [--limit 50]")
 	fmt.Println("  ai-sched-cli show <task-id>")

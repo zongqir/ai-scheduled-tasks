@@ -125,6 +125,10 @@ func (r Runner) ProcessNotificationsOnce(ctx context.Context) error {
 }
 
 func (r Runner) processTask(ctx context.Context, record task.Task, now time.Time) error {
+	if record.Action == task.ActionRunAgent {
+		r.logf("task %s executing with agent %s", record.ID, strings.TrimSpace(record.Agent))
+	}
+
 	run, startErr := r.Repo.StartRun(ctx, record.ID, buildRunInput(record))
 	if startErr != nil {
 		return r.Repo.FinishRun(ctx, task.FinishRunInput{

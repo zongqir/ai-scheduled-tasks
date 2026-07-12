@@ -1,8 +1,10 @@
 package scheduler
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"log"
 	"strings"
 	"testing"
 	"time"
@@ -39,6 +41,7 @@ func TestRunnerRunOnceProcessesDueTaskWithAgentExecution(t *testing.T) {
 			ExitCode: 0,
 		},
 	}
+	var logs bytes.Buffer
 	runner := Runner{
 		Repo:                repo,
 		Factory:             fakeFactory{sender: sender},
@@ -49,6 +52,7 @@ func TestRunnerRunOnceProcessesDueTaskWithAgentExecution(t *testing.T) {
 		Now: func() time.Time {
 			return time.Unix(2, 0)
 		},
+		Logger: log.New(&logs, "", 0),
 	}
 
 	if err := runner.RunOnce(context.Background()); err != nil {
@@ -70,6 +74,9 @@ func TestRunnerRunOnceProcessesDueTaskWithAgentExecution(t *testing.T) {
 	}
 	if execRunner.inputs[0].Prompt != "fix it" {
 		t.Fatalf("unexpected executor prompt: %q", execRunner.inputs[0].Prompt)
+	}
+	if !strings.Contains(logs.String(), "executing with agent codex") {
+		t.Fatalf("expected execution log to identify agent, got %q", logs.String())
 	}
 }
 

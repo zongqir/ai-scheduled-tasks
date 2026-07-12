@@ -115,6 +115,8 @@ Notes:
 - Current storage is SQLite via `modernc.org/sqlite`
 - The module now targets Go `1.25`
 - The default AI runtime is `acpx`
+- On first-time interactive initialization, `init` asks which `acpx` agent should run scheduled AI tasks (for example `codex`, `opencode`, or `claude`). It does not silently choose one. For scripts and CI, pass it explicitly: `ai-sched-cli init --agent codex`.
+- Existing configurations retain their configured `ai.agent`; use `ai-sched-cli init --agent <name>` to switch it without overwriting the rest of the config.
 - For Agents and skills, prefer a compiled `ai-sched-cli` binary over `go run`
 - `setup-runtime.sh` prefers the latest GitHub Release binary and falls back to clone+build when no release asset is available
 - `raw.githubusercontent.com` can still time out occasionally; prefer the clone/archive bootstrap above when you want the most reliable GitHub-based setup path
@@ -125,4 +127,5 @@ Notes:
 - `ai-sched-cli tag-route set <tag> ...` is intended to be used by the higher-level scheduling skill
 - `daemon --ensure` is intended to be safe to call after every task create/update from an external skill
 - The current `wechat` channel depends on a running `wechat-bridge-opencode` bridge
+- Scheduled time is an execution target, not a real-time delivery guarantee. The daemon detects due tasks on `daemon.poll_interval_seconds` (1 second by default), then queues notifications after task execution; the outbox is processed on `daemon.notification_poll_seconds` (10 seconds by default). AI runtime, channel, and network latency add further delay.
 - Detailed design remains in [plan.md](./plan.md)

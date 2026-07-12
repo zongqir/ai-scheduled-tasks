@@ -1,10 +1,41 @@
 package app
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"ai-sched-cli/internal/config"
 )
+
+func TestRunInitUsesExplicitAgentForNewConfig(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.json")
+	if err := runInit(configPath, []string{"--agent", "opencode"}); err != nil {
+		t.Fatalf("initialize config: %v", err)
+	}
+
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		t.Fatalf("load initialized config: %v", err)
+	}
+	if cfg.AI.Agent != "opencode" {
+		t.Fatalf("expected selected agent opencode, got %q", cfg.AI.Agent)
+	}
+}
+
+func TestSelectInitAgentRequiresFlagWithoutTerminal(t *testing.T) {
+	info, err := os.Stdin.Stat()
+	if err != nil {
+		t.Fatalf("stat stdin: %v", err)
+	}
+	if info.Mode()&os.ModeCharDevice != 0 {
+		t.Skip("test process has an interactive terminal")
+	}
+
+	if _, err := selectInitAgent(""); err == nil {
+		t.Fatal("expected non-interactive initialization to require --agent")
+	}
+}
 
 func TestResolveTaskChannelsUsesDefaultAndAlignsRefs(t *testing.T) {
 	targets, err := resolveTaskChannels(nil, []string{"team-a"}, "wecom_robot")
