@@ -97,6 +97,19 @@ curl -fsSL https://github.com/zongqir/ai-scheduled-tasks/archive/refs/heads/main
 "$tmpdir/ai-scheduled-tasks-main/skills/schedule-task-manager/scripts/check-availability.sh"
 ```
 
+Publishing a GitHub Release:
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+Tag pushes matching `v*` publish a GitHub Release with:
+
+- `ai-sched-cli-linux-amd64`
+- `ai-sched-cli-linux-arm64`
+- `ai-sched-cli-checksums.txt`
+
 Notes:
 
 - Current storage is SQLite via `modernc.org/sqlite`
@@ -105,6 +118,7 @@ Notes:
 - For Agents and skills, prefer a compiled `ai-sched-cli` binary over `go run`
 - `setup-runtime.sh` prefers the latest GitHub Release binary and falls back to clone+build when no release asset is available
 - `raw.githubusercontent.com` can still time out occasionally; prefer the clone/archive bootstrap above when you want the most reliable GitHub-based setup path
+- Release binaries are published by pushing a `v*` git tag, and tagged builds embed that tag in `ai-sched-cli version`
 - Repeating `--channel` / `--channel-ref` builds a channel fan-out list for one task
 - Tasks default to notifying, but `add` / `update` also support `--no-notify` for silent execution
 - Channel selection priority is: explicit `--channel` > matched `tag_routes` > `default_channel`

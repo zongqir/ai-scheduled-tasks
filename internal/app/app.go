@@ -23,7 +23,7 @@ import (
 	"ai-sched-cli/internal/task"
 )
 
-const version = "dev"
+var version = "dev"
 
 func Run(args []string) error {
 	globalConfigPath, trimmedArgs, err := extractGlobalConfigPath(args)
